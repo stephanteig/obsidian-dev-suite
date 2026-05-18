@@ -15,7 +15,7 @@ All user-facing elements are prefixed with `[DEV]` so the plugin is always visua
 | **Client Context Switcher** | Tracks an active "client space". Creates client folders and index notes. Shows active client as a colored dot in the status bar and a highlighted ribbon icon. Supports per-client accent colors. |
 | **Palette Extractor** | Scans the current note for hex, rgb(), and hsl() values and inserts a `palette` block. Skips existing `color`/`palette` blocks and deduplicates results. |
 | **Smart Note Creator** | A three-step modal (title → type → details) that creates structured notes with frontmatter. Types: Meeting, Project, Client Brief, Research, Quick note, Reference. Intercepts Obsidian's default new-note action (with toggle). Warns on first open when a note is missing frontmatter (dismissable per file). Supports applying templates to existing notes. |
-| **Dev Panel** | Side panel (right sidebar) providing a single dashboard for all modules. Sections: Active client, Note Creator, Palette Extractor, Color Preview, Module status. Editor-dependent buttons auto-disable. Reactive to client switches and active leaf changes. |
+| **Dev Panel** | Side panel (right sidebar) providing a single dashboard for all modules. Sections: Active client, Note Creator, Palette Extractor, Color Preview, Module status. Editor-dependent buttons auto-disable. Reactive to client switches and active leaf changes. "Update dashboard" regenerates an Overview stats table and per-type note tables inside the client dashboard file without overwriting manual content. |
 
 ---
 
@@ -116,6 +116,13 @@ All modals extend `DevModal` (`modules/shared/dev-modal.ts`) instead of Obsidian
 ---
 
 ## Changelog
+
+### 2026-05-18 (session 7)
+- Added: "Update dashboard" generates Overview stats + per-type note tables from client folder
+  - Groups notes by `type` frontmatter: Meetings, Projects, Research, etc. with type-specific columns
+  - Wraps generated content in `<!-- dev:generated:start/end -->` markers so manual content is preserved
+  - Create path: generated block embedded on first creation
+  - Update path: replaces only the marked block, everything outside is untouched
 
 ### 2026-05-18 (session 6)
 - Fixed: intercept notice flooding on Obsidian startup reload (`onLayoutReady` + ctime guard)

@@ -347,6 +347,17 @@ Changes take effect after reloading the plugin (Cmd+R in Obsidian).
 - Reactive: re-renders on `active-leaf-change` and when modules call `plugin.refreshPanel?.()`
 - `createOrOpenDashboard()` — creates folder + dashboard file with template if needed; button label changes to "Update dashboard" once file exists; "Open dashboard" ghost button appears alongside
 
+**Session 7 — Dashboard auto-generation**
+- `generateDashboardBlock()` — standalone function in `dev-panel/index.ts`
+- Scans client folder with `vault.getAllLoadedFiles()`, reads frontmatter from `metadataCache`
+- Groups notes by `type` field; known order: meeting → project → brief → research → reference → quick → other
+- Type-specific table columns: meeting gets Attendees, project gets Status + Deadline, research gets Topic, rest get Date only
+- Notes sorted by `date` frontmatter descending within each group
+- Overview stats row: total notes, last activity (max mtime), type count, generation timestamp
+- `GENERATED_START` / `GENERATED_END` HTML comment markers bracket the generated block
+- Update path: replaces only between markers — everything outside (manual notes, manual sections) is preserved
+- Create path: embeds the generated block in the initial file; old dashboards without markers get it appended
+
 **Session 6 — Intercept fix + frontmatter warning + toggles**
 - Fixed B-4: startup reload flood
 - Added `interceptNewNote: boolean` and `warnOnMissingFrontmatter: boolean` settings toggles
