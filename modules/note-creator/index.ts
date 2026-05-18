@@ -105,32 +105,105 @@ export function loadNoteCreator(plugin: DevPlugin): void {
         },
     });
 
-    // Intercept Obsidian's default new-note action.
-    // Shows a brief non-blocking notice with an "Open Note Creator" button.
-    plugin.registerEvent(
-        plugin.app.vault.on("create", (abstractFile) => {
-            if (!(abstractFile instanceof TFile)) return;
-            if (abstractFile.extension !== "md") return;
-            if (creatingOurOwnNote) return; // we made it ourselves — don't intercept
+    // Wrap in onLayoutReady so these events don't fire during Obsidian's startup
+    // vault scan, which re-emits "create" for every existing file.
+    plugin.app.workspace.onLayoutReady(() => {
+        plugin.registerEvent(
+            plugin.app.vault.on("create", (abstractFile) => {
+                if (!(abstractFile instanceof TFile)) return;
+                if (abstractFile.extension !== "md") return;
+                if (creatingOurOwnNote) return;
+                if (!plugin.settings.noteCreator.interceptNewNote) return;
+                // Skip files older than 3 s — they're from the startup scan, not user action.
+                if (Date.now() - abstractFile.stat.ctime > 3000) return;
+                showInterceptNotice(plugin);
+            })
+        );
 
-            const notice = new Notice("", 8000);
-            notice.messageEl.addClass("dev-nc-intercept-notice");
+        plugin.registerEvent(
+            plugin.app.workspace.on("file-open", (file) => {
+                if (!file || !(file instanceof TFile)) return;
+                if (file.extension !== "md") return;
+                if (!plugin.settings.noteCreator.warnOnMissingFrontmatter) return;
+                if (plugin.settings.noteCreator.dismissedFormatWarnings.includes(file.path)) return;
+                // Delay so metadataCache has time to parse the file.
+                setTimeout(() => {
+                    if (!isFormattedCorrectly(plugin, file)) {
+                        showFrontmatterWarning(plugin, file);
+                    }
+                }, 400);
+            })
+        );
+    });
+}
 
-            notice.messageEl.createDiv({
-                text: "New note created. Use Note Creator for structured notes?",
-                cls: "dev-nc-intercept-text",
-            });
+// ── Notice helpers ────────────────────────────────────────────────────────────
 
-            const btn = notice.messageEl.createEl("button", {
-                text: "Open Note Creator",
-                cls: "dev-nc-intercept-btn",
-            });
-            btn.addEventListener("click", () => {
-                notice.hide();
-                new NoteCreatorModal(plugin.app, plugin).open();
-            });
-        })
-    );
+function showInterceptNotice(plugin: DevPlugin): void {
+    const notice = new Notice("", 8000);
+    notice.messageEl.addClass("dev-nc-intercept-notice");
+
+    const header = notice.messageEl.createDiv("dev-nc-notice-header");
+    header.createSpan({ text: "New note created", cls: "dev-nc-notice-title" });
+    const closeBtn = header.createEl("button", { cls: "dev-nc-notice-close" });
+    setIcon(closeBtn, "x");
+    closeBtn.addEventListener("click", () => notice.hide());
+
+    notice.messageEl.createDiv({
+        text: "Use Note Creator for structured notes with frontmatter?",
+        cls: "dev-nc-intercept-text",
+    });
+
+    const actions = notice.messageEl.createDiv("dev-nc-notice-actions");
+    const btn = actions.createEl("button", { text: "Open Note Creator", cls: "dev-nc-intercept-btn" });
+    btn.addEventListener("click", () => {
+        notice.hide();
+        new NoteCreatorModal(plugin.app, plugin).open();
+    });
+}
+
+function isFormattedCorrectly(plugin: DevPlugin, file: TFile): boolean {
+    const fm = plugin.app.metadataCache.getFileCache(file)?.frontmatter;
+    if (!fm) return false;
+    return !!(fm["title"] && fm["date"] && fm["tags"]);
+}
+
+function showFrontmatterWarning(plugin: DevPlugin, file: TFile): void {
+    const notice = new Notice("", 10000);
+    notice.messageEl.addClass("dev-nc-intercept-notice");
+
+    const header = notice.messageEl.createDiv("dev-nc-notice-header");
+    header.createSpan({ text: "Missing frontmatter", cls: "dev-nc-notice-title" });
+    const closeBtn = header.createEl("button", { cls: "dev-nc-notice-close" });
+    setIcon(closeBtn, "x");
+    closeBtn.addEventListener("click", () => notice.hide());
+
+    notice.messageEl.createDiv({
+        text: `"${file.basename}" is missing title, date, or tags frontmatter.`,
+        cls: "dev-nc-intercept-text",
+    });
+
+    const actions = notice.messageEl.createDiv("dev-nc-notice-actions");
+
+    const applyBtn = actions.createEl("button", { text: "Apply template", cls: "dev-nc-intercept-btn" });
+    applyBtn.addEventListener("click", () => {
+        notice.hide();
+        const editor = plugin.app.workspace.activeEditor?.editor;
+        if (editor) new ApplyTemplateModal(plugin.app, plugin, file, editor).open();
+    });
+
+    const dismissBtn = actions.createEl("button", { text: "Don't show again", cls: "dev-nc-notice-dismiss" });
+    dismissBtn.addEventListener("click", () => {
+        void dismissFormatWarning(plugin, file.path);
+        notice.hide();
+    });
+}
+
+async function dismissFormatWarning(plugin: DevPlugin, path: string): Promise<void> {
+    if (!plugin.settings.noteCreator.dismissedFormatWarnings.includes(path)) {
+        plugin.settings.noteCreator.dismissedFormatWarnings.push(path);
+        await plugin.saveSettings();
+    }
 }
 
 // ── Note Creator Modal ────────────────────────────────────────────────────────

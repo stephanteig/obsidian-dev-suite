@@ -22,11 +22,17 @@ export const DEFAULT_COLOR_PREVIEW_SETTINGS: ColorPreviewSettings = {
 export interface NoteCreatorSettings {
     defaultFolder: string;
     openAfterCreate: boolean;
+    interceptNewNote: boolean;
+    warnOnMissingFrontmatter: boolean;
+    dismissedFormatWarnings: string[];
 }
 
 export const DEFAULT_NOTE_CREATOR_SETTINGS: NoteCreatorSettings = {
     defaultFolder: "",
     openAfterCreate: true,
+    interceptNewNote: true,
+    warnOnMissingFrontmatter: true,
+    dismissedFormatWarnings: [],
 };
 
 // ── Client Context settings ───────────────────────────────────────────────────

@@ -107,6 +107,10 @@ export class DevPanelView extends ItemView {
             this.secondaryBtn(row, dashIcon, dashLabel, () => {
                 void this.createOrOpenDashboard(activeClient, clientsFolder, dashPath, dashExists);
             });
+
+            if (dashExists) {
+                this.ghostBtn(body, "layout-dashboard", "Open dashboard", () => this.cmd("dev-cc-open-dashboard"));
+            }
         }
 
         this.ghostBtn(body, "user-plus", "Create new client", () => this.cmd("dev-cc-create-client"));

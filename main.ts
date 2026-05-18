@@ -205,5 +205,25 @@ class DevSuiteSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
+        new Setting(containerEl)
+            .setName("Intercept new note")
+            .setDesc("Show a prompt to use Note Creator when a note is created outside it.")
+            .addToggle((t) => t
+                .setValue(this.plugin.settings.noteCreator.interceptNewNote)
+                .onChange(async (v) => {
+                    this.plugin.settings.noteCreator.interceptNewNote = v;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName("Warn on missing frontmatter")
+            .setDesc("Show a warning (once per file) when opening a note without required frontmatter.")
+            .addToggle((t) => t
+                .setValue(this.plugin.settings.noteCreator.warnOnMissingFrontmatter)
+                .onChange(async (v) => {
+                    this.plugin.settings.noteCreator.warnOnMissingFrontmatter = v;
+                    await this.plugin.saveSettings();
+                }));
+
     }
 }

@@ -631,13 +631,51 @@
     gap: 8px;
 }
 
+.dev-nc-notice-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.dev-nc-notice-title {
+    font-weight: 600;
+    font-size: 0.9em;
+}
+
+.dev-nc-notice-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 3px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: background var(--dev-transition), color var(--dev-transition);
+}
+
+.dev-nc-notice-close:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.dev-nc-notice-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
 .dev-nc-intercept-text {
     font-size: 0.9em;
     line-height: 1.3;
 }
 
 .dev-nc-intercept-btn {
-    align-self: flex-start;
     padding: 4px 12px;
     border-radius: 4px;
     background: var(--interactive-accent);
@@ -650,6 +688,22 @@
 
 .dev-nc-intercept-btn:hover {
     filter: brightness(1.12);
+}
+
+.dev-nc-notice-dismiss {
+    padding: 4px 12px;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--background-modifier-border);
+    cursor: pointer;
+    font-size: 0.85em;
+    transition: background var(--dev-transition), color var(--dev-transition);
+}
+
+.dev-nc-notice-dismiss:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
 }
 
 /* ──────────────────────────────────────────────────
