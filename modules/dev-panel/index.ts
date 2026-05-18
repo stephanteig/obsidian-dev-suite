@@ -5,6 +5,117 @@ import type { DevPlugin } from "../../types";
 
 export const VIEW_TYPE_DEV_PANEL = "dev-suite-panel";
 
+// ── Dashboard content generation ──────────────────────────────────────────────
+
+const GENERATED_START = "<!-- dev:generated:start -->";
+const GENERATED_END   = "<!-- dev:generated:end -->";
+
+const TYPE_ORDER = ["meeting", "project", "brief", "research", "reference", "quick"];
+
+const TYPE_LABELS: Record<string, string> = {
+    meeting:   "Meetings",
+    project:   "Projects",
+    brief:     "Client Briefs",
+    research:  "Research",
+    reference: "References",
+    quick:     "Quick Notes",
+};
+
+function generateDashboardBlock(
+    plugin: DevPlugin,
+    clientName: string,
+    clientsFolder: string,
+    dashPath: string,
+): string {
+    const clientFolderPath = `${clientsFolder}/${clientName}`;
+    const allFiles = plugin.app.vault.getAllLoadedFiles();
+    const clientFiles = allFiles.filter(
+        (f): f is TFile =>
+            f instanceof TFile &&
+            f.extension === "md" &&
+            f.path.startsWith(clientFolderPath + "/") &&
+            f.path !== dashPath,
+    );
+
+    const groups: Record<string, Array<{ file: TFile; fm: Record<string, unknown> }>> = {};
+    let lastModified = 0;
+
+    for (const file of clientFiles) {
+        const fm = (plugin.app.metadataCache.getFileCache(file)?.frontmatter ?? {}) as Record<string, unknown>;
+        const type = typeof fm["type"] === "string" ? fm["type"] : "other";
+        if (!groups[type]) groups[type] = [];
+        groups[type].push({ file, fm });
+        if (file.stat.mtime > lastModified) lastModified = file.stat.mtime;
+    }
+
+    for (const entries of Object.values(groups)) {
+        entries.sort((a, b) =>
+            String(b.fm["date"] ?? "").localeCompare(String(a.fm["date"] ?? "")),
+        );
+    }
+
+    const totalNotes    = clientFiles.length;
+    const lastStr       = lastModified > 0 ? moment(lastModified).format("YYYY-MM-DD") : "—";
+    const typeCount     = Object.keys(groups).filter(t => t !== "client").length;
+    const updated       = moment().format("YYYY-MM-DD HH:mm");
+
+    const lines: string[] = [
+        GENERATED_START,
+        "",
+        "## Overview",
+        "",
+        "| Notes | Last activity | Types | Updated |",
+        "|-------|---------------|-------|---------|",
+        `| ${totalNotes} | ${lastStr} | ${typeCount} | ${updated} |`,
+        "",
+    ];
+
+    if (totalNotes === 0) {
+        lines.push("*No notes found in this client folder yet.*", "", GENERATED_END);
+        return lines.join("\n");
+    }
+
+    // Known types first (in preferred order), then any unknown types (excluding "client")
+    const orderedTypes = [
+        ...TYPE_ORDER.filter(t => t in groups),
+        ...Object.keys(groups).filter(t => !TYPE_ORDER.includes(t) && t !== "client" && t !== "other"),
+        ...("other" in groups ? ["other"] : []),
+    ];
+
+    for (const type of orderedTypes) {
+        const entries = groups[type];
+        if (!entries?.length) continue;
+        const label = TYPE_LABELS[type] ?? (type.charAt(0).toUpperCase() + type.slice(1) + "s");
+        lines.push(`## ${label} (${entries.length})`, "");
+
+        if (type === "meeting") {
+            lines.push("| Note | Date | Attendees |", "|------|------|-----------|");
+            for (const { file, fm } of entries) {
+                lines.push(`| [[${file.basename}]] | ${String(fm["date"] ?? "—")} | ${String(fm["attendees"] ?? "—")} |`);
+            }
+        } else if (type === "project") {
+            lines.push("| Note | Date | Status | Deadline |", "|------|------|--------|----------|");
+            for (const { file, fm } of entries) {
+                lines.push(`| [[${file.basename}]] | ${String(fm["date"] ?? "—")} | ${String(fm["status"] ?? "—")} | ${String(fm["deadline"] ?? "—")} |`);
+            }
+        } else if (type === "research") {
+            lines.push("| Note | Date | Topic |", "|------|------|-------|");
+            for (const { file, fm } of entries) {
+                lines.push(`| [[${file.basename}]] | ${String(fm["date"] ?? "—")} | ${String(fm["topic"] ?? "—")} |`);
+            }
+        } else {
+            lines.push("| Note | Date |", "|------|------|");
+            for (const { file, fm } of entries) {
+                lines.push(`| [[${file.basename}]] | ${String(fm["date"] ?? "—")} |`);
+            }
+        }
+        lines.push("");
+    }
+
+    lines.push(GENERATED_END);
+    return lines.join("\n");
+}
+
 export class DevPanelView extends ItemView {
     constructor(leaf: WorkspaceLeaf, private readonly plugin: DevPlugin) {
         super(leaf);
@@ -198,9 +309,10 @@ export class DevPanelView extends ItemView {
                 await this.app.vault.createFolder(clientFolder);
             }
 
-            const today = moment().format("YYYY-MM-DD");
-            const slug  = clientName.toLowerCase().replace(/\s+/g, "-");
-            const content = [
+            const today     = moment().format("YYYY-MM-DD");
+            const slug      = clientName.toLowerCase().replace(/\s+/g, "-");
+            const generated = generateDashboardBlock(this.plugin, clientName, clientsFolder, dashPath);
+            const content   = [
                 "---",
                 `title: "${clientName}"`,
                 `tags: ["client/${slug}"]`,
@@ -210,17 +322,35 @@ export class DevPanelView extends ItemView {
                 "",
                 `# ${clientName}`,
                 "",
-                "## Overview",
+                "_Add manual notes and context here. The sections below are auto-generated and updated when you click \"Update dashboard\"._",
                 "",
-                "## Notes",
-                "",
-                "## Tasks",
+                generated,
                 "",
             ].join("\n");
 
             file = await this.app.vault.create(dashPath, content);
             new Notice(`[DEV] Dashboard created for "${clientName}".`);
-            this.renderPanel(); // refresh so button updates to "Update dashboard"
+            this.renderPanel();
+        } else {
+            // Update: regenerate the block between markers, keep everything else intact.
+            const current   = await this.app.vault.read(file);
+            const generated = generateDashboardBlock(this.plugin, clientName, clientsFolder, dashPath);
+            const startIdx  = current.indexOf(GENERATED_START);
+            const endIdx    = current.indexOf(GENERATED_END);
+
+            let updated: string;
+            if (startIdx !== -1 && endIdx !== -1) {
+                updated =
+                    current.slice(0, startIdx) +
+                    generated +
+                    current.slice(endIdx + GENERATED_END.length);
+            } else {
+                // No markers yet (old dashboard) — append the block at the end.
+                updated = current.trimEnd() + "\n\n" + generated + "\n";
+            }
+
+            await this.app.vault.modify(file, updated);
+            new Notice(`[DEV] Dashboard updated for "${clientName}".`);
         }
 
         if (file instanceof TFile) {
