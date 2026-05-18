@@ -83,6 +83,26 @@ export const DEFAULT_DEV_SUITE_SETTINGS: DevSuiteSettings = {
 // Modules accept this type instead of importing DevSuitePlugin from main.ts
 // to avoid circular dependencies.
 
+// ── Cross-platform vault helpers ──────────────────────────────────────────────
+
+// Normalize a vault-relative folder path entered by the user:
+// replace backslashes, collapse duplicate slashes, strip leading/trailing slashes.
+export function normalizeFolderPath(raw: string): string {
+    return raw
+        .replace(/\\/g, "/")
+        .replace(/\/+/g, "/")
+        .replace(/^\/|\/$/g, "")
+        .trim();
+}
+
+// Characters that are illegal in file/folder names on Windows — enforced for
+// all platforms so vaults stay portable when synced between Mac and Windows.
+const ILLEGAL_NAME_CHARS = /[\\/:*?"<>|]/;
+
+export function isValidVaultName(name: string): boolean {
+    return name.length > 0 && !ILLEGAL_NAME_CHARS.test(name);
+}
+
 export type DevPlugin = Plugin & {
     settings: DevSuiteSettings;
     saveSettings(): Promise<void>;

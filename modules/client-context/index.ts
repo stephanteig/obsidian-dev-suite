@@ -9,6 +9,7 @@ import {
     moment,
 } from "obsidian";
 import type { DevPlugin } from "../../types";
+import { isValidVaultName } from "../../types";
 import { ClientSwitcherModal } from "../shared/client-switcher";
 
 // ── Module loader ─────────────────────────────────────────────────────────────
@@ -152,6 +153,10 @@ class NewClientModal extends Modal {
         const name = this.clientName.trim();
         if (!name) {
             new Notice("[DEV] Client context — client name is required.");
+            return;
+        }
+        if (!isValidVaultName(name)) {
+            new Notice('[DEV] Client name cannot contain \\ / : * ? " < > |');
             return;
         }
 

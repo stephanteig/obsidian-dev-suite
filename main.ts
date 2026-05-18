@@ -3,6 +3,7 @@ import {
     DEFAULT_DEV_SUITE_SETTINGS,
     DEFAULT_NOTE_CREATOR_SETTINGS,
     DEFAULT_CLIENT_CONTEXT_SETTINGS,
+    normalizeFolderPath,
 } from "./types";
 import type { DevSuiteSettings } from "./types";
 import { loadColorPreview } from "./modules/color-preview/index";
@@ -177,7 +178,7 @@ class DevSuiteSettingTab extends PluginSettingTab {
                 .setPlaceholder("Clients")
                 .setValue(this.plugin.settings.clientContext.clientsFolder)
                 .onChange(async (v) => {
-                    this.plugin.settings.clientContext.clientsFolder = v.trim() || "Clients";
+                    this.plugin.settings.clientContext.clientsFolder = normalizeFolderPath(v) || "Clients";
                     await this.plugin.saveSettings();
                 }));
 
@@ -191,7 +192,7 @@ class DevSuiteSettingTab extends PluginSettingTab {
                 .setPlaceholder("Notes")
                 .setValue(this.plugin.settings.noteCreator.defaultFolder)
                 .onChange(async (v) => {
-                    this.plugin.settings.noteCreator.defaultFolder = v.trim();
+                    this.plugin.settings.noteCreator.defaultFolder = normalizeFolderPath(v);
                     await this.plugin.saveSettings();
                 }));
 
