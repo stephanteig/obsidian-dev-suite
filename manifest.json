@@ -1,7 +1,7 @@
 {
     "id": "dev-suite",
     "name": "Dev Suite [DEV]",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "minAppVersion": "1.0.0",
     "description": "Dev sandbox bundling five modules: Client Context switcher, Palette Extractor, Smart Note Creator, Color Preview, and a side-panel dashboard. All commands prefixed [DEV].",
     "author": "Stephan Teig",
