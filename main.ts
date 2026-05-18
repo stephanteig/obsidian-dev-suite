@@ -10,17 +10,44 @@ import type { ColorPreviewModule } from "./modules/color-preview/index";
 import { loadClientContext } from "./modules/client-context/index";
 import { loadPaletteExtractor } from "./modules/palette-extractor/index";
 import { loadNoteCreator } from "./modules/note-creator/index";
+import { DevPanelView, VIEW_TYPE_DEV_PANEL } from "./modules/dev-panel/index";
 
 // ─── Plugin ───────────────────────────────────────────────────────────────────
 
 export default class DevSuitePlugin extends Plugin {
     settings: DevSuiteSettings;
     colorPreviewModule: ColorPreviewModule | null = null;
+    refreshPanel?: () => void;
 
     async onload() {
         try {
             await this.loadSettings();
             console.log("[DEV] settings loaded");
+
+            // Register the side panel view
+            this.registerView(
+                VIEW_TYPE_DEV_PANEL,
+                (leaf) => new DevPanelView(leaf, this),
+            );
+
+            // Wire up refreshPanel so modules can trigger re-renders
+            this.refreshPanel = () => {
+                for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_DEV_PANEL)) {
+                    if (leaf.view instanceof DevPanelView) leaf.view.refresh();
+                }
+            };
+
+            // Ribbon icon to open the panel
+            this.addRibbonIcon("layout-dashboard", "[DEV] Åpne Dev Suite panel", () => {
+                void this.activatePanel();
+            });
+
+            // Command to open the panel
+            this.addCommand({
+                id: "dev-open-panel",
+                name: "[DEV] Åpne Dev Suite panel",
+                callback: () => { void this.activatePanel(); },
+            });
 
             if (this.settings.modules.colorPreview) {
                 this.colorPreviewModule = loadColorPreview(this);
@@ -48,6 +75,20 @@ export default class DevSuitePlugin extends Plugin {
             console.error("[DEV] Failed to load Dev Suite:", err);
             throw err;
         }
+    }
+
+    onunload() {
+        this.app.workspace.detachLeavesOfType(VIEW_TYPE_DEV_PANEL);
+    }
+
+    async activatePanel(): Promise<void> {
+        const { workspace } = this.app;
+        let leaf = workspace.getLeavesOfType(VIEW_TYPE_DEV_PANEL)[0];
+        if (!leaf) {
+            leaf = workspace.getRightLeaf(false) ?? workspace.getLeaf(false);
+            await leaf.setViewState({ type: VIEW_TYPE_DEV_PANEL, active: true });
+        }
+        workspace.revealLeaf(leaf);
     }
 
     async loadSettings() {

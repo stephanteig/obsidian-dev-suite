@@ -34,6 +34,7 @@ export function loadClientContext(plugin: DevPlugin): void {
     function syncUI(): void {
         renderStatusBar(statusBar, plugin);
         updateRibbon(ribbon, plugin);
+        plugin.refreshPanel?.();
     }
 
     function openSwitcher(): void {

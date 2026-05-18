@@ -80,4 +80,5 @@ export const DEFAULT_DEV_SUITE_SETTINGS: DevSuiteSettings = {
 export type DevPlugin = Plugin & {
     settings: DevSuiteSettings;
     saveSettings(): Promise<void>;
+    refreshPanel?: () => void;
 };
