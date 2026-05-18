@@ -46,6 +46,7 @@ obsidian-dev-suite/
     palette-extractor/index.ts   — Module 4: Palette Extractor
     note-creator/index.ts        — Module 5: Smart Note Creator
     color-preview/index.ts       — Color Preview (copied + adapted)
+    dev-panel/index.ts           — Side panel ItemView (controls all modules)
 ```
 
 **Removed:** `modules/research-dashboard/` — deleted per user request (2026-05-18).
@@ -83,6 +84,7 @@ The `DevPlugin` type (in `types.ts`) is:
 type DevPlugin = Plugin & {
     settings: DevSuiteSettings;
     saveSettings(): Promise<void>;
+    refreshPanel?: () => void;   // set in main.ts; modules call this to re-render the side panel
 };
 ```
 
@@ -206,7 +208,13 @@ All new CSS must use the design tokens defined at the top of `styles.css`:
 | `.dev-cc-suggest-row` | Suggest list row with dot + label |
 | `.dev-nc-type-grid` / `.dev-nc-type-card` | Note type picker grid |
 | `.dev-nc-client-warning` | Orange mismatch warning banner |
-| `.dev-nc-intercept-notice/btn` | New-note intercept notice layout |
+| `.dev-nc-intercept-notice` | Notice container (flex column, gap 8px) |
+| `.dev-nc-notice-header` | Notice title row (flex, space-between) |
+| `.dev-nc-notice-close` | X button inside notice header |
+| `.dev-nc-notice-actions` | Row of action buttons at notice bottom |
+| `.dev-nc-intercept-btn` | Primary action button inside a notice |
+| `.dev-nc-notice-dismiss` | "Don't show again" button (ghost style) |
+| `.dev-panel-*` | All Dev Panel side-panel components |
 
 ---
 
@@ -289,8 +297,9 @@ Changes take effect after reloading the plugin (Cmd+R in Obsidian).
 |---|---|
 | **Color Preview** | ✅ Fully working — all rendering, interactions, commands pass |
 | **Client Context** | ✅ Overhauled — colored dot, ribbon icon, per-client color picker, reliable switcher |
-| **Note Creator** | ✅ Overhauled — DevModal layout, banner quick-switch, client warning, new-note intercept, apply template |
+| **Note Creator** | ✅ Overhauled — DevModal layout, banner quick-switch, client warning, intercept (fixed), frontmatter warning, settings toggles |
 | **Palette Extractor** | ✅ Bug fixed — code block exclusion now reliable |
+| **Dev Panel** | ✅ Side panel controlling all modules — reactive, editor-aware, full section layout |
 | **Research Dashboard** | ❌ Removed per user request |
 
 ### Bugs fixed (2026-05-18)
@@ -299,20 +308,21 @@ Changes take effect after reloading the plugin (Cmd+R in Obsidian).
 | B-1 | Client Context | Status bar `renderStatusBar()` wrapped in `workspace.onLayoutReady()` |
 | B-2 | Client Context | `ClientSwitcherModal.getItems()` replaced `folder.children` with `vault.getAllLoadedFiles()` |
 | B-3 | Palette Extractor | `stripFrontmatterAndCodeBlocks()` rewritten with explicit `openFence` tracking — closing fence must be bare backticks, no language tag |
+| B-4 | Note Creator | `vault.on("create")` wrapped in `onLayoutReady` + `ctime > 3s` guard — intercept no longer floods on Obsidian startup reload |
 
 ### What was built (2026-05-18)
 
-**Økt 1 — Bug fixes + Research Dashboard removal**
+**Session 1 — Bug fixes + Research Dashboard removal**
 - Fixed B-1, B-2, B-3
 - Deleted `modules/research-dashboard/index.ts`
 - Removed all references from `main.ts`, `types.ts`, `styles.css`
 
-**Økt 2 — CSS foundation + shared infrastructure**
+**Session 2 — CSS foundation + shared infrastructure**
 - Added design tokens and component CSS (DevModal layout, step indicator, client badge)
 - Created `modules/shared/dev-modal.ts` — abstract `DevModal` base class
 - Created `modules/shared/client-switcher.ts` — `ClientSwitcherModal` moved here from `client-context`
 
-**Økt 3 — Client Context UX overhaul**
+**Session 3 — Client Context UX overhaul**
 - Added `clientColors: Record<string, string>` to `ClientContextSettings`
 - `renderStatusBar()` now uses `createEl` with a colored dot (`.dev-cc-dot`) instead of `setText`
 - Added ribbon icon (`users`) — highlighted when a client is active
@@ -320,7 +330,7 @@ Changes take effect after reloading the plugin (Cmd+R in Obsidian).
 - New command: `[DEV] Client context: Set color for active client`
 - `ClientSwitcherModal.renderSuggestion()` — shows colored dot per client in the suggest list
 
-**Økt 4 — Note Creator overhaul**
+**Session 4 — Note Creator overhaul**
 - `NoteCreatorModal` migrated to `DevModal` — consistent header, client banner, step indicator
 - `onSwitchClient()` overridden — opens `ClientSwitcherModal` inline from the banner Switch button; re-renders step 3 body after switch so fields update
 - Step 3: orange client mismatch warning when active client ≠ `client` field value
@@ -328,12 +338,29 @@ Changes take effect after reloading the plugin (Cmd+R in Obsidian).
 - New command: `[DEV] Note creator: Apply template to current note`
 - `ApplyTemplateModal` — type picker that merges template frontmatter fields into an existing note via `insertFrontmatterFields()` without touching content
 
+**Session 5 — Dev Panel side panel**
+- `modules/dev-panel/index.ts` — new `ItemView` registered as `"dev-suite-panel"`
+- Ribbon icon and command to open the panel
+- Sections: Active client, Note Creator, Palette Extractor, Color Preview, Module status grid
+- Colored client dot, Switch pill-button, Set color, Create/Update/Open dashboard buttons
+- Editor-dependent buttons auto-disabled when no editor is active
+- Reactive: re-renders on `active-leaf-change` and when modules call `plugin.refreshPanel?.()`
+- `createOrOpenDashboard()` — creates folder + dashboard file with template if needed; button label changes to "Update dashboard" once file exists; "Open dashboard" ghost button appears alongside
+
+**Session 6 — Intercept fix + frontmatter warning + toggles**
+- Fixed B-4: startup reload flood
+- Added `interceptNewNote: boolean` and `warnOnMissingFrontmatter: boolean` settings toggles
+- Added `dismissedFormatWarnings: string[]` to persist per-file dismiss state
+- Intercept notice and frontmatter warning now have a header row with title + X close button
+- `workspace.on("file-open")` listener warns (once per file) when required frontmatter fields are missing; "Don't show again" saves the file path to `dismissedFormatWarnings`
+- Settings tab: two new toggles for intercept and frontmatter warning
+- Dev Panel: "Open dashboard" ghost button alongside Create/Update when dashboard exists
+
 ---
 
 ## Open Questions / Next Steps
 
 - **Settings tab** — `clientColors` is stored but there is no settings UI for viewing/resetting all client colors at once. Consider adding a "Manage client colors" section.
-- **New-note intercept toggle** — the intercept fires on every new note. Could become annoying. Consider a settings toggle: `interceptNewNote: boolean`.
 - **`color-mix()` fallback** — used in `dev-modal-client-banner` and `dev-nc-client-warning`. Supported in Electron 22+ (Obsidian 1.1+). If issues arise on older builds, replace with hardcoded `rgba()`.
 - **Production split** — when a module is stable enough to ship standalone, see "Splitting Modules" section below.
 

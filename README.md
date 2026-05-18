@@ -14,13 +14,16 @@ All user-facing elements are prefixed with `[DEV]` so the plugin is always visua
 | **Color Preview** | Renders `color` and `palette` fenced code blocks as visual swatches. Click to copy values or edit hex via system color picker. Detects hex/rgb/hsl inline in notes. |
 | **Client Context Switcher** | Tracks an active "client space". Creates client folders and index notes. Shows active client as a colored dot in the status bar and a highlighted ribbon icon. Supports per-client accent colors. |
 | **Palette Extractor** | Scans the current note for hex, rgb(), and hsl() values and inserts a `palette` block. Skips existing `color`/`palette` blocks and deduplicates results. |
-| **Smart Note Creator** | A three-step modal (title → type → details) that creates structured notes with frontmatter. Types: Meeting, Project, Client Brief, Research, Quick note, Reference. Intercepts Obsidian's default new-note action. Supports applying templates to existing notes. |
+| **Smart Note Creator** | A three-step modal (title → type → details) that creates structured notes with frontmatter. Types: Meeting, Project, Client Brief, Research, Quick note, Reference. Intercepts Obsidian's default new-note action (with toggle). Warns on first open when a note is missing frontmatter (dismissable per file). Supports applying templates to existing notes. |
+| **Dev Panel** | Side panel (right sidebar) providing a single dashboard for all modules. Sections: Active client, Note Creator, Palette Extractor, Color Preview, Module status. Editor-dependent buttons auto-disable. Reactive to client switches and active leaf changes. |
 
 ---
 
 ## Commands
 
 ```
+[DEV] Open Dev Suite panel
+
 [DEV] Client context: Switch space
 [DEV] Client context: Open client dashboard
 [DEV] Client context: Create new client
@@ -65,7 +68,8 @@ obsidian-dev-suite/
 │   ├── client-context/index.ts
 │   ├── palette-extractor/index.ts
 │   ├── note-creator/index.ts
-│   └── color-preview/index.ts
+│   ├── color-preview/index.ts
+│   └── dev-panel/index.ts         # Side panel ItemView
 └── CLAUDE.md                      # Full developer docs for Claude Code
 ```
 
@@ -113,7 +117,19 @@ All modals extend `DevModal` (`modules/shared/dev-modal.ts`) instead of Obsidian
 
 ## Changelog
 
-### 2026-05-18
+### 2026-05-18 (session 6)
+- Fixed: intercept notice flooding on Obsidian startup reload (`onLayoutReady` + ctime guard)
+- Added: `interceptNewNote` toggle — disable the "Use Note Creator?" prompt per preference
+- Added: `warnOnMissingFrontmatter` toggle — warn on first open of notes missing required fields
+- Added: notices now have an X close button and a "Don't show again" per-file dismiss
+- Added: Dev Panel — "Open dashboard" ghost button alongside Create/Update when dashboard exists
+- Added: two new setting toggles in the Note Creator settings section
+
+### 2026-05-18 (session 5)
+- Added: `modules/dev-panel/index.ts` — side panel `ItemView` with ribbon icon and command
+- Added: Dev Panel sections for all active modules; editor-aware button states; reactive refresh
+
+### 2026-05-18 (sessions 1–4)
 - Fixed: status bar not rendering on load (wrapped in `onLayoutReady`)
 - Fixed: switch space command unreliable (migrated to `getAllLoadedFiles`)
 - Fixed: palette extractor picking up colors inside code blocks (explicit fence tracking)
