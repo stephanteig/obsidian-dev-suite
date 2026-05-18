@@ -266,25 +266,27 @@ class NoteCreatorModal extends DevModal {
 
         for (const field of this.selectedType.extraFields) {
             const prefill = field.key === "client" && activeClient ? activeClient : "";
+            const initialValue = this.extraValues[field.key] ?? prefill;
+            // Seed extraValues so the mismatch warning can detect stale client values
+            // after switching the active client via the banner on step 3.
+            if (field.key === "client" && !(field.key in this.extraValues)) {
+                this.extraValues[field.key] = initialValue;
+            }
             new Setting(this.bodyEl)
                 .setName(field.label)
                 .addText((t) => {
                     t.setPlaceholder(field.placeholder)
-                        .setValue(this.extraValues[field.key] ?? prefill)
+                        .setValue(initialValue)
                         .onChange((v) => { this.extraValues[field.key] = v; });
                     t.inputEl.style.width = "100%";
                 });
         }
 
-        // Client mismatch warning: shown when active client differs from the
-        // "client" field so the user knows where the note will be saved.
-        const clientField = this.extraValues["client"] ?? (
-            this.selectedType.extraFields.some((f) => f.key === "client") && activeClient
-                ? activeClient
-                : null
-        );
+        // Client mismatch warning: shown when the "client" field value differs from
+        // the active space — only possible after switching via the banner on step 3.
+        const clientField = this.extraValues["client"];
 
-        if (activeClient && clientField && clientField !== activeClient) {
+        if (activeClient && clientField !== undefined && clientField !== activeClient) {
             const warn = this.bodyEl.createDiv("dev-nc-client-warning");
             const iconWrap = warn.createSpan("dev-nc-warning-icon");
             setIcon(iconWrap, "alert-triangle");
