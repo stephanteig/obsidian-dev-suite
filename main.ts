@@ -38,14 +38,14 @@ export default class DevSuitePlugin extends Plugin {
             };
 
             // Ribbon icon to open the panel
-            this.addRibbonIcon("layout-dashboard", "[DEV] Åpne Dev Suite panel", () => {
+            this.addRibbonIcon("layout-dashboard", "[DEV] Open Dev Suite panel", () => {
                 void this.activatePanel();
             });
 
             // Command to open the panel
             this.addCommand({
                 id: "dev-open-panel",
-                name: "[DEV] Åpne Dev Suite panel",
+                name: "[DEV] Open Dev Suite panel",
                 callback: () => { void this.activatePanel(); },
             });
 

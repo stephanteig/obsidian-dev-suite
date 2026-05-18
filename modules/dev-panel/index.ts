@@ -1,6 +1,6 @@
 // ─── Dev Suite Panel — ItemView ───────────────────────────────────────────────
 
-import { ItemView, WorkspaceLeaf, setIcon } from "obsidian";
+import { ItemView, Notice, TFile, WorkspaceLeaf, moment, setIcon } from "obsidian";
 import type { DevPlugin } from "../../types";
 
 export const VIEW_TYPE_DEV_PANEL = "dev-suite-panel";
@@ -10,9 +10,9 @@ export class DevPanelView extends ItemView {
         super(leaf);
     }
 
-    getViewType(): string  { return VIEW_TYPE_DEV_PANEL; }
+    getViewType(): string    { return VIEW_TYPE_DEV_PANEL; }
     getDisplayText(): string { return "Dev Suite"; }
-    getIcon(): string { return "layout-dashboard"; }
+    getIcon(): string        { return "layout-dashboard"; }
 
     async onOpen(): Promise<void> {
         this.renderPanel();
@@ -66,7 +66,7 @@ export class DevPanelView extends ItemView {
         left.createEl("span", { text: "[DEV]", cls: "dev-panel-title-badge" });
 
         const gearBtn = header.createDiv({ cls: "dev-panel-icon-btn" });
-        gearBtn.setAttribute("aria-label", "Innstillinger");
+        gearBtn.setAttribute("aria-label", "Settings");
         setIcon(gearBtn, "settings");
         gearBtn.addEventListener("click", () => {
             (this.app as any).setting?.open();
@@ -75,9 +75,9 @@ export class DevPanelView extends ItemView {
     }
 
     private renderClientSection(root: HTMLElement): void {
-        const { activeClient, clientColors } = this.plugin.settings.clientContext;
+        const { activeClient, clientColors, clientsFolder } = this.plugin.settings.clientContext;
         const color = activeClient ? (clientColors?.[activeClient] ?? null) : null;
-        const body = this.section(root, "Aktiv klient", "users");
+        const body = this.section(root, "Active client", "users");
 
         // Status pill
         const pill = body.createDiv("dev-panel-client-pill");
@@ -90,28 +90,37 @@ export class DevPanelView extends ItemView {
             cls: "dev-panel-client-name" + (activeClient ? "" : " is-private"),
         });
 
-        const switchBtn = pill.createEl("button", { text: "Bytt", cls: "dev-panel-pill-btn" });
+        const switchBtn = pill.createEl("button", { text: "Switch", cls: "dev-panel-pill-btn" });
         switchBtn.addEventListener("click", () => this.cmd("dev-cc-switch-space"));
 
-        // Secondary row — only when a client is active
         if (activeClient) {
+            // Check if dashboard file exists to determine button label
+            const dashPath = `${clientsFolder}/${activeClient}/${activeClient}.md`;
+            const dashExists = this.app.vault.getAbstractFileByPath(dashPath) instanceof TFile;
+
             const row = body.createDiv("dev-panel-row");
-            this.secondaryBtn(row, "palette",           "Sett farge",  () => this.cmd("dev-cc-set-client-color"));
-            this.secondaryBtn(row, "layout-dashboard",  "Dashboard",   () => this.cmd("dev-cc-open-dashboard"));
+            this.secondaryBtn(row, "palette", "Set color", () => this.cmd("dev-cc-set-client-color"));
+
+            // Smart dashboard button: Create or Update
+            const dashIcon  = dashExists ? "square-pen"  : "file-plus-2";
+            const dashLabel = dashExists ? "Update dashboard" : "Create dashboard";
+            this.secondaryBtn(row, dashIcon, dashLabel, () => {
+                void this.createOrOpenDashboard(activeClient, clientsFolder, dashPath, dashExists);
+            });
         }
 
-        this.ghostBtn(body, "user-plus", "Opprett ny klient", () => this.cmd("dev-cc-create-client"));
+        this.ghostBtn(body, "user-plus", "Create new client", () => this.cmd("dev-cc-create-client"));
     }
 
     private renderNoteCreatorSection(root: HTMLElement): void {
         const body = this.section(root, "Note Creator", "file-plus");
         const hasEditor = this.hasActiveEditor();
 
-        this.primaryBtn(body, "file-plus", "Ny note", () => this.cmd("dev-nc-new-note"));
+        this.primaryBtn(body, "file-plus", "New note", () => this.cmd("dev-nc-new-note"));
 
         const row = body.createDiv("dev-panel-row");
-        this.secondaryBtn(row, "wrench",     "Reparer frontmatter", () => this.cmd("dev-nc-repair-frontmatter"));
-        this.secondaryBtn(row, "file-input", "Bruk mal",             () => this.cmd("dev-nc-apply-template"), !hasEditor);
+        this.secondaryBtn(row, "wrench",     "Repair frontmatter", () => this.cmd("dev-nc-repair-frontmatter"));
+        this.secondaryBtn(row, "file-input", "Apply template",      () => this.cmd("dev-nc-apply-template"), !hasEditor);
     }
 
     private renderPaletteSection(root: HTMLElement): void {
@@ -119,7 +128,7 @@ export class DevPanelView extends ItemView {
         const hasEditor = this.hasActiveEditor();
 
         this.primaryBtn(
-            body, "pipette", "Ekstraher palette fra note",
+            body, "pipette", "Extract palette from note",
             () => this.cmd("dev-pe-extract-palette"),
             !hasEditor,
         );
@@ -130,19 +139,19 @@ export class DevPanelView extends ItemView {
         const hasEditor = this.hasActiveEditor();
 
         this.primaryBtn(
-            body, "pipette", "Sett inn farge (velger)",
+            body, "pipette", "Insert color (picker)",
             () => this.cmd("dev-cp-insert-color-picker"),
             !hasEditor,
         );
 
         const row = body.createDiv("dev-panel-row");
-        this.secondaryBtn(row, "hash",         "Hex",       () => this.cmd("dev-cp-insert-color-hex"),       !hasEditor);
-        this.secondaryBtn(row, "clipboard",    "Utklipp",   () => this.cmd("dev-cp-insert-color-clipboard"), !hasEditor);
-        this.secondaryBtn(row, "square-plus",  "Tom blokk", () => this.cmd("dev-cp-insert-color-template"),  !hasEditor);
+        this.secondaryBtn(row, "hash",        "Hex",         () => this.cmd("dev-cp-insert-color-hex"),       !hasEditor);
+        this.secondaryBtn(row, "clipboard",   "Clipboard",   () => this.cmd("dev-cp-insert-color-clipboard"), !hasEditor);
+        this.secondaryBtn(row, "square-plus", "Empty block", () => this.cmd("dev-cp-insert-color-template"),  !hasEditor);
     }
 
     private renderModuleStatus(root: HTMLElement): void {
-        const body = this.section(root, "Moduler", "box");
+        const body = this.section(root, "Modules", "box");
         const grid = body.createDiv("dev-panel-module-grid");
 
         const modules: { key: keyof typeof this.plugin.settings.modules; label: string; icon: string }[] = [
@@ -153,7 +162,7 @@ export class DevPanelView extends ItemView {
         ];
 
         for (const { key, label, icon } of modules) {
-            const row = grid.createDiv("dev-panel-module-row");
+            const row  = grid.createDiv("dev-panel-module-row");
             const left = row.createDiv("dev-panel-module-left");
             const iconEl = left.createSpan("dev-panel-module-icon");
             setIcon(iconEl, icon);
@@ -161,15 +170,65 @@ export class DevPanelView extends ItemView {
             const badge = row.createEl("span", { cls: "dev-panel-module-badge" });
             const isActive = this.plugin.settings.modules[key];
             badge.addClass(isActive ? "is-active" : "is-inactive");
-            badge.setText(isActive ? "Aktiv" : "Av");
+            badge.setText(isActive ? "Active" : "Off");
+        }
+    }
+
+    // ── Dashboard create / open ───────────────────────────────────────────────
+
+    private async createOrOpenDashboard(
+        clientName: string,
+        clientsFolder: string,
+        dashPath: string,
+        exists: boolean,
+    ): Promise<void> {
+        let file = this.app.vault.getAbstractFileByPath(dashPath);
+
+        if (!exists || !(file instanceof TFile)) {
+            // Ensure parent folders exist
+            if (!this.app.vault.getAbstractFileByPath(clientsFolder)) {
+                await this.app.vault.createFolder(clientsFolder);
+            }
+            const clientFolder = `${clientsFolder}/${clientName}`;
+            if (!this.app.vault.getAbstractFileByPath(clientFolder)) {
+                await this.app.vault.createFolder(clientFolder);
+            }
+
+            const today = moment().format("YYYY-MM-DD");
+            const slug  = clientName.toLowerCase().replace(/\s+/g, "-");
+            const content = [
+                "---",
+                `title: "${clientName}"`,
+                `tags: ["client/${slug}"]`,
+                `date: ${today}`,
+                "type: client",
+                "---",
+                "",
+                `# ${clientName}`,
+                "",
+                "## Overview",
+                "",
+                "## Notes",
+                "",
+                "## Tasks",
+                "",
+            ].join("\n");
+
+            file = await this.app.vault.create(dashPath, content);
+            new Notice(`[DEV] Dashboard created for "${clientName}".`);
+            this.renderPanel(); // refresh so button updates to "Update dashboard"
+        }
+
+        if (file instanceof TFile) {
+            await this.app.workspace.getLeaf(false).openFile(file);
         }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private section(root: HTMLElement, title: string, icon: string): HTMLElement {
-        const wrap = root.createDiv("dev-panel-section");
-        const hdr  = wrap.createDiv("dev-panel-section-hdr");
+        const wrap   = root.createDiv("dev-panel-section");
+        const hdr    = wrap.createDiv("dev-panel-section-hdr");
         const iconEl = hdr.createSpan("dev-panel-section-icon");
         setIcon(iconEl, icon);
         hdr.createEl("span", { text: title, cls: "dev-panel-section-title" });
@@ -187,7 +246,7 @@ export class DevPanelView extends ItemView {
         if (disabled) {
             btn.addClass("is-disabled");
             btn.disabled = true;
-            btn.setAttribute("aria-label", `${label} — krever aktiv editor`);
+            btn.setAttribute("aria-label", `${label} — requires active editor`);
         }
         const iconEl = btn.createSpan("dev-panel-btn-icon");
         setIcon(iconEl, icon);
@@ -207,7 +266,7 @@ export class DevPanelView extends ItemView {
         if (disabled) {
             btn.addClass("is-disabled");
             btn.disabled = true;
-            btn.setAttribute("aria-label", `${label} — krever aktiv editor`);
+            btn.setAttribute("aria-label", `${label} — requires active editor`);
         }
         const iconEl = btn.createSpan("dev-panel-btn-icon");
         setIcon(iconEl, icon);
@@ -222,7 +281,7 @@ export class DevPanelView extends ItemView {
         label: string,
         onClick: () => void,
     ): HTMLElement {
-        const btn = parent.createEl("button", { cls: "dev-panel-btn-ghost" });
+        const btn    = parent.createEl("button", { cls: "dev-panel-btn-ghost" });
         const iconEl = btn.createSpan("dev-panel-btn-icon");
         setIcon(iconEl, icon);
         btn.createEl("span", { text: label });
