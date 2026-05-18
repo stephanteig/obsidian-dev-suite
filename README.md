@@ -1,9 +1,35 @@
 # Dev Suite [DEV]
 
 > **Development sandbox plugin for Obsidian.**
-> Bundles multiple sub-plugins into one testable codebase. Not published to the Obsidian community registry — local dev only.
+> Bundles multiple sub-plugins into one testable codebase. Not published to the Obsidian community registry — install manually or via BRAT.
 
 All user-facing elements are prefixed with `[DEV]` so the plugin is always visually distinct from production plugins installed alongside it.
+
+---
+
+## Installation
+
+### Option A — BRAT (recommended)
+
+[BRAT](https://github.com/TfTHacker/obsidian42-brat) lets you install and update GitHub-hosted plugins that aren't in the community store.
+
+1. Install **Obsidian42 - BRAT** from the Obsidian community plugins list
+2. Open BRAT settings → **Add Beta plugin**
+3. Enter: `stephanteig/obsidian-dev-suite`
+4. Click **Add plugin** — BRAT downloads and installs automatically
+5. Enable **Dev Suite [DEV]** in Settings → Community Plugins
+
+To update later: BRAT settings → **Check for updates**.
+
+### Option B — Manual install
+
+1. Go to the [latest release](https://github.com/stephanteig/obsidian-dev-suite/releases/latest)
+2. Download `main.js`, `manifest.json`, and `styles.css`
+3. Create the folder `.obsidian/plugins/dev-suite/` in your vault
+4. Copy the three files into that folder
+5. Reload Obsidian and enable **Dev Suite [DEV]** in Settings → Community Plugins
+
+> **Note:** `dev-suite` and the production `color-preview` plugin **cannot both be active at the same time** — both register the same Markdown code block processors. Disable the production plugin before enabling dev-suite.
 
 ---
 
@@ -12,10 +38,10 @@ All user-facing elements are prefixed with `[DEV]` so the plugin is always visua
 | Module | Description |
 |---|---|
 | **Color Preview** | Renders `color` and `palette` fenced code blocks as visual swatches. Click to copy values or edit hex via system color picker. Detects hex/rgb/hsl inline in notes. |
-| **Client Context Switcher** | Tracks an active "client space". Creates client folders and index notes. Shows active client as a colored dot in the status bar and a highlighted ribbon icon. Supports per-client accent colors. |
+| **Client Context** | Tracks an active "client space". Creates client folders and index notes. Shows active client as a colored dot in the status bar and a highlighted ribbon icon. Supports per-client accent colors. |
 | **Palette Extractor** | Scans the current note for hex, rgb(), and hsl() values and inserts a `palette` block. Skips existing `color`/`palette` blocks and deduplicates results. |
-| **Smart Note Creator** | A three-step modal (title → type → details) that creates structured notes with frontmatter. Types: Meeting, Project, Client Brief, Research, Quick note, Reference. Intercepts Obsidian's default new-note action (with toggle). Warns on first open when a note is missing frontmatter (dismissable per file). Supports applying templates to existing notes. |
-| **Dev Panel** | Side panel (right sidebar) providing a single dashboard for all modules. Sections: Active client, Note Creator, Palette Extractor, Color Preview, Module status. Editor-dependent buttons auto-disable. Reactive to client switches and active leaf changes. "Update dashboard" regenerates an Overview stats table and per-type note tables inside the client dashboard file without overwriting manual content. |
+| **Smart Note Creator** | A three-step modal (title → type → details) that creates structured notes with frontmatter. Types: Meeting, Project, Client Brief, Research, Quick note, Reference. Intercepts Obsidian's default new-note action (toggle). Warns on first open when a note is missing frontmatter (dismissable per file). |
+| **Dev Panel** | Side panel (right sidebar) controlling all modules. Active client section with smart dashboard button — "Update dashboard" regenerates an Overview stats table and per-type note tables from the client folder without overwriting manual content. |
 
 ---
 
@@ -29,12 +55,12 @@ All user-facing elements are prefixed with `[DEV]` so the plugin is always visua
 [DEV] Client context: Create new client
 [DEV] Client context: Set color for active client
 
-[DEV] Palette extractor: Extract palette from note
-[DEV] Color preview: Extract palette from note
-
 [DEV] Note creator: New note (modal)
 [DEV] Note creator: Scan and repair frontmatter
 [DEV] Note creator: Apply template to current note
+
+[DEV] Palette extractor: Extract palette from note
+[DEV] Color preview: Extract palette from note
 
 [DEV] Color preview: Insert color (color picker)
 [DEV] Color preview: Insert color (type hex)
@@ -75,17 +101,18 @@ obsidian-dev-suite/
 
 ---
 
-## Build & deploy
+## Build & deploy (local dev)
 
 ```bash
+npm install
 npm run build
 
-cp main.js "/Users/Stephan/Library/Mobile Documents/iCloud~md~obsidian/Documents/Stephan MacbookPro/.obsidian/plugins/dev-suite/main.js"
+# Copy to your vault
+cp main.js "/path/to/vault/.obsidian/plugins/dev-suite/main.js"
+cp styles.css "/path/to/vault/.obsidian/plugins/dev-suite/styles.css"
 ```
 
 Reload Obsidian with `Cmd+R`.
-
-> **Note:** `dev-suite` and the production `color-preview` plugin **cannot both be active at the same time** — both register the same Markdown code block processors. Disable the production plugin before enabling dev-suite.
 
 ---
 
@@ -100,9 +127,20 @@ All modals extend `DevModal` (`modules/shared/dev-modal.ts`) instead of Obsidian
 - **Step indicator** — CSS progress bar, shown when `getStepCount()` is implemented
 - **Body / Footer** — separate containers, never mix actions into body
 
-### Shared modules
+### Dashboard generation
 
-`modules/shared/` holds utilities imported by multiple modules to avoid circular dependencies. `ClientSwitcherModal` lives here because both `client-context` and `note-creator` need it.
+"Update dashboard" in the Dev Panel scans the active client's folder via `metadataCache`, groups notes by their `type` frontmatter field, and writes a block of tables into the dashboard file. The block is wrapped in HTML comment markers so manual content above and below is never touched:
+
+```
+<!-- dev:generated:start -->
+## Overview
+| Notes | Last activity | Types | Updated |
+...
+## Meetings (3)
+| Note | Date | Attendees |
+...
+<!-- dev:generated:end -->
+```
 
 ### CSS design tokens
 
@@ -117,30 +155,13 @@ All modals extend `DevModal` (`modules/shared/dev-modal.ts`) instead of Obsidian
 
 ## Changelog
 
-### 2026-05-18 (session 7)
-- Added: "Update dashboard" generates Overview stats + per-type note tables from client folder
-  - Groups notes by `type` frontmatter: Meetings, Projects, Research, etc. with type-specific columns
-  - Wraps generated content in `<!-- dev:generated:start/end -->` markers so manual content is preserved
-  - Create path: generated block embedded on first creation
-  - Update path: replaces only the marked block, everything outside is untouched
+### 0.1.0 — 2026-05-18
 
-### 2026-05-18 (session 6)
-- Fixed: intercept notice flooding on Obsidian startup reload (`onLayoutReady` + ctime guard)
-- Added: `interceptNewNote` toggle — disable the "Use Note Creator?" prompt per preference
-- Added: `warnOnMissingFrontmatter` toggle — warn on first open of notes missing required fields
-- Added: notices now have an X close button and a "Don't show again" per-file dismiss
-- Added: Dev Panel — "Open dashboard" ghost button alongside Create/Update when dashboard exists
-- Added: two new setting toggles in the Note Creator settings section
-
-### 2026-05-18 (session 5)
-- Added: `modules/dev-panel/index.ts` — side panel `ItemView` with ribbon icon and command
-- Added: Dev Panel sections for all active modules; editor-aware button states; reactive refresh
-
-### 2026-05-18 (sessions 1–4)
-- Fixed: status bar not rendering on load (wrapped in `onLayoutReady`)
-- Fixed: switch space command unreliable (migrated to `getAllLoadedFiles`)
-- Fixed: palette extractor picking up colors inside code blocks (explicit fence tracking)
-- Removed: Research Dashboard module (deleted per design decision)
-- Added: `DevModal` base class and shared CSS design system
-- Added: Client Context — colored dot status bar, ribbon icon, per-client color picker
-- Added: Note Creator — client banner with inline switch, client mismatch warning, new-note intercept, "Apply template to current note" command
+- **Dev Panel** side panel controlling all modules
+- **Dashboard auto-generation** — Update dashboard generates Overview stats + per-type note tables (Meetings, Projects, Research, etc.) from the client folder; manual content is preserved via HTML comment markers
+- **Intercept fix** — new-note notice no longer floods on Obsidian startup reload
+- **Frontmatter warning** — warns on first open of notes missing required fields; dismissable per file
+- **Settings toggles** — independently enable/disable the intercept notice and frontmatter warning
+- **Client Context** — colored dot status bar, ribbon icon, per-client color picker
+- **Note Creator** — client banner with inline switch, client mismatch warning, apply template command
+- **Bug fixes** — status bar load timing, switch space reliability, palette extractor code block filter
