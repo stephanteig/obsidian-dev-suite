@@ -1,0 +1,747 @@
+// ─── Color Preview Module ─────────────────────────────────────────────────────
+// Full port of obsidian-color-preview into the dev-suite plugin.
+// Source: https://github.com/stephanteig/obsidian-color-preview
+//
+// Adapted for dev-suite:
+//   - loadColorPreview(plugin) replaces the Plugin.onload() entry point
+//   - Settings are read from plugin.settings.colorPreview
+//   - All commands are prefixed with "[DEV] Color Preview:"
+//   - Ribbon icon title carries "[DEV]"
+//   - ColorPreviewModule is exported so palette-extractor can reuse renderers
+
+import {
+    App,
+    Editor,
+    EditorPosition,
+    EditorSuggest,
+    EditorSuggestContext,
+    EditorSuggestTriggerInfo,
+    MarkdownPostProcessorContext,
+    Modal,
+    Notice,
+    Platform,
+    Setting,
+    TFile,
+    setIcon,
+} from "obsidian";
+import { EditorView, ViewPlugin, WidgetType, Decoration, DecorationSet, ViewUpdate } from "@codemirror/view";
+import { RangeSetBuilder } from "@codemirror/state";
+import type { DevPlugin } from "../../types";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+export function normalizeHex(raw: string): string {
+    const h = raw.replace(/`/g, "").trim();
+    const upper = h.toUpperCase();
+    return upper.startsWith("#") ? upper : `#${upper}`;
+}
+
+export function isValidHex(s: string): boolean {
+    return /^#?[0-9a-fA-F]{6}$/.test(s.trim());
+}
+
+export function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+    const clean = hex.replace(/^#/, "");
+    const m = /^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(clean);
+    return m
+        ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) }
+        : null;
+}
+
+export function rgbToCmyk(r: number, g: number, b: number): { c: number; m: number; y: number; k: number } {
+    const rr = r / 255, gg = g / 255, bb = b / 255;
+    const k = 1 - Math.max(rr, gg, bb);
+    if (k >= 1) return { c: 0, m: 0, y: 0, k: 100 };
+    const d = 1 - k;
+    return {
+        c: Math.round(((1 - rr - k) / d) * 100),
+        m: Math.round(((1 - gg - k) / d) * 100),
+        y: Math.round(((1 - bb - k) / d) * 100),
+        k: Math.round(k * 100),
+    };
+}
+
+export function isLightColor(hex: string): boolean {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return true;
+    return (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255 > 0.55;
+}
+
+function parseColorSource(source: string): Record<string, string> {
+    const data: Record<string, string> = {};
+    for (const line of source.trim().split("\n")) {
+        const idx = line.indexOf(":");
+        if (idx === -1) continue;
+        const key = line.slice(0, idx).trim().toLowerCase();
+        const value = line.slice(idx + 1).trim().replace(/`/g, "");
+        if (key && value) data[key] = value;
+    }
+    return data;
+}
+
+export function buildColorBlock(hex: string, name?: string): string {
+    const rgb = hexToRgb(hex);
+    const lines = ["```color"];
+    if (name) lines.push(`name: ${name}`);
+    lines.push(`hex: ${hex}`);
+    if (rgb) lines.push(`rgb: ${rgb.r}, ${rgb.g}, ${rgb.b}`);
+    lines.push("```");
+    return lines.join("\n");
+}
+
+// ─── CM6 inline dot decoration (Live Preview) ─────────────────────────────────
+
+const HEX_RE = /#[0-9a-fA-F]{6}\b/g;
+
+class HexDotWidget extends WidgetType {
+    constructor(readonly hex: string) { super(); }
+    eq(other: HexDotWidget) { return other.hex === this.hex; }
+    toDOM() {
+        const dot = document.createElement("span");
+        dot.className = "cp-inline-dot";
+        dot.style.backgroundColor = this.hex;
+        return dot;
+    }
+    ignoreEvent() { return true; }
+}
+
+function buildInlineDotExtension() {
+    return ViewPlugin.fromClass(
+        class {
+            decorations: DecorationSet;
+            constructor(view: EditorView) { this.decorations = buildDotDecorations(view); }
+            update(u: ViewUpdate) {
+                if (u.docChanged || u.viewportChanged) {
+                    this.decorations = buildDotDecorations(u.view);
+                }
+            }
+        },
+        { decorations: (v) => v.decorations }
+    );
+}
+
+function buildDotDecorations(view: EditorView): DecorationSet {
+    const builder = new RangeSetBuilder<Decoration>();
+    for (const { from, to } of view.visibleRanges) {
+        const text = view.state.doc.sliceString(from, to);
+        HEX_RE.lastIndex = 0;
+        let m: RegExpExecArray | null;
+        while ((m = HEX_RE.exec(text)) !== null) {
+            const pos = from + m.index;
+            builder.add(pos, pos, Decoration.widget({ widget: new HexDotWidget(m[0]), side: -1 }));
+        }
+    }
+    return builder.finish();
+}
+
+// ─── Color Preview Module ─────────────────────────────────────────────────────
+
+export class ColorPreviewModule {
+    constructor(private plugin: DevPlugin) {}
+
+    // ── Render: color block ───────────────────────────────────────────────────
+
+    renderColorBlock(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) {
+        const settings = this.plugin.settings.colorPreview;
+        const data = parseColorSource(source);
+        const rawHex = (data["hex"] || data["html"] || data["color"] || "").trim();
+        const hex = rawHex ? normalizeHex(rawHex) : "";
+
+        const name    = data["name"]  || "";
+        const hasRgb  = !!data["rgb"];
+        const hasCmyk = !!data["cmyk"];
+
+        const rgb = hexToRgb(hex);
+        const calcRgbStr  = rgb ? `${rgb.r}, ${rgb.g}, ${rgb.b}` : "";
+        const calcCmykObj = rgb ? rgbToCmyk(rgb.r, rgb.g, rgb.b) : null;
+        const calcCmykStr = calcCmykObj
+            ? `${calcCmykObj.c}, ${calcCmykObj.m}, ${calcCmykObj.y}, ${calcCmykObj.k}`
+            : "";
+
+        const rgbDisplay  = data["rgb"]  || calcRgbStr;
+        const cmykDisplay = data["cmyk"] || calcCmykStr;
+        const pmsDisplay  = data["pms"]  || "";
+
+        const container = el.createDiv({ cls: "cp-container" });
+        container.style.maxWidth = `${settings.maxWidth}px`;
+
+        // ── Swatch ──────────────────────────────────────────────────────────
+        const swatch = container.createDiv({ cls: "cp-swatch" });
+        swatch.style.height = `${settings.swatchHeight}px`;
+
+        if (hex) {
+            swatch.style.backgroundColor = hex;
+            const swatchHex = swatch.createDiv({ cls: "cp-swatch-hex" });
+            swatchHex.textContent = hex;
+            swatchHex.style.color = isLightColor(hex) ? "#222" : "#fff";
+        } else {
+            swatch.classList.add("cp-swatch-empty");
+        }
+
+        const editIcon = swatch.createDiv({ cls: "cp-edit-icon" });
+        setIcon(editIcon, "pencil");
+        if (hex) editIcon.style.color = isLightColor(hex) ? "#222" : "#fff";
+
+        swatch.addEventListener("click", () => void this.editColorInPlace(el, ctx, hex));
+
+        // ── Info ────────────────────────────────────────────────────────────
+        const info = container.createDiv({ cls: "cp-info" });
+
+        if (name && settings.showColorName) {
+            info.createDiv({ cls: "cp-name", text: name });
+        }
+
+        const rows: { label: string; value: string; mono: boolean; calculated: boolean }[] = [
+            { label: "HTML",  value: hex,          mono: true,  calculated: false },
+            { label: "RGB",   value: rgbDisplay,   mono: false, calculated: !hasRgb  && !!calcRgbStr  },
+            { label: "CMYK",  value: cmykDisplay,  mono: false, calculated: !hasCmyk && !!calcCmykStr },
+            { label: "PMS",   value: pmsDisplay,   mono: false, calculated: false },
+        ];
+
+        for (const row of rows) {
+            if (!row.value) continue;
+            const rowEl = info.createDiv({ cls: "cp-row" });
+            rowEl.createSpan({ cls: "cp-label", text: `${row.label}: ` });
+
+            const cls = ["cp-value", row.mono ? "cp-mono" : "", row.calculated ? "cp-calculated" : ""]
+                .filter(Boolean).join(" ");
+            const valSpan = rowEl.createSpan({ cls, text: row.value });
+
+            if (row.calculated) {
+                rowEl.createSpan({ cls: "cp-approx", text: " ~" });
+            }
+
+            valSpan.classList.add("cp-copyable");
+            valSpan.title = "Click to copy";
+            valSpan.addEventListener("click", () => {
+                void navigator.clipboard.writeText(row.value).then(() => {
+                    const orig = valSpan.textContent ?? row.value;
+                    valSpan.textContent = "Copied!";
+                    valSpan.classList.add("cp-copied");
+                    setTimeout(() => {
+                        valSpan.textContent = orig;
+                        valSpan.classList.remove("cp-copied");
+                    }, 1200);
+                }).catch(() => {});
+            });
+        }
+
+        if ((!hasCmyk && calcCmykStr) || (!hasRgb && calcRgbStr)) {
+            info.createDiv({ cls: "cp-calc-note", text: "~ approximate calculated value" });
+        }
+    }
+
+    // ── Edit color in place ───────────────────────────────────────────────────
+
+    private async editColorInPlace(el: HTMLElement, ctx: MarkdownPostProcessorContext, currentHex: string) {
+        const applyHex = async (newHex: string) => {
+            const sectionInfo = ctx.getSectionInfo(el);
+            if (!sectionInfo) return;
+            const editor = this.plugin.app.workspace.activeEditor?.editor;
+            if (editor) {
+                this.replaceHexInEditor(editor, sectionInfo.lineStart, sectionInfo.lineEnd, newHex);
+            } else {
+                const file = this.plugin.app.workspace.getActiveFile();
+                if (!file) return;
+                const content = await this.plugin.app.vault.read(file);
+                const lines = content.split("\n");
+                this.replaceHexInLines(lines, sectionInfo.lineStart, sectionInfo.lineEnd, newHex);
+                await this.plugin.app.vault.modify(file, lines.join("\n"));
+            }
+        };
+
+        if (Platform.isMobile) {
+            new QuickHexModal(this.plugin.app, (newHex) => { void applyHex(newHex); }, currentHex).open();
+            return;
+        }
+
+        const input = document.createElement("input");
+        input.type = "color";
+        input.value = isValidHex(currentHex) ? currentHex : "#000000";
+        input.addClass("cp-hidden-picker");
+        document.body.appendChild(input);
+
+        let done = false;
+        const apply = () => {
+            if (done) return;
+            done = true;
+            void applyHex(input.value.toUpperCase());
+            cleanup();
+        };
+        const cleanup = () => {
+            input.removeEventListener("change", apply);
+            if (document.body.contains(input)) document.body.removeChild(input);
+        };
+        input.addEventListener("change", apply);
+        input.addEventListener("blur", () => setTimeout(cleanup, 200));
+        input.click();
+    }
+
+    private replaceHexInEditor(editor: Editor, lineStart: number, lineEnd: number, newHex: string) {
+        for (let i = lineStart; i <= lineEnd; i++) {
+            const line = editor.getLine(i);
+            if (/^hex:/i.test(line.trim())) {
+                editor.replaceRange(`hex: ${newHex}`, { line: i, ch: 0 }, { line: i, ch: line.length });
+                return;
+            }
+        }
+        const insertAt = lineStart + 1;
+        editor.replaceRange(`hex: ${newHex}\n`, { line: insertAt, ch: 0 }, { line: insertAt, ch: 0 });
+    }
+
+    private replaceHexInLines(lines: string[], lineStart: number, lineEnd: number, newHex: string) {
+        for (let i = lineStart; i <= lineEnd; i++) {
+            if (/^hex:/i.test((lines[i] ?? "").trim())) {
+                lines[i] = `hex: ${newHex}`;
+                return;
+            }
+        }
+        lines.splice(lineStart + 1, 0, `hex: ${newHex}`);
+    }
+
+    // ── Render: palette block ─────────────────────────────────────────────────
+
+    renderPaletteBlock(source: string, el: HTMLElement) {
+        const strip = el.createDiv({ cls: "cp-palette" });
+
+        for (const rawLine of source.trim().split("\n")) {
+            const line = rawLine.trim();
+            if (!line) continue;
+
+            let hex = "";
+            let name = "";
+            const colonIdx = line.indexOf(":");
+            if (colonIdx !== -1) {
+                name = line.slice(0, colonIdx).trim();
+                hex  = normalizeHex(line.slice(colonIdx + 1).trim());
+            } else {
+                const parts = line.split(/\s+/);
+                hex  = normalizeHex(parts[0]);
+                name = parts.slice(1).join(" ");
+            }
+            if (!isValidHex(hex)) continue;
+
+            const swatch = strip.createDiv({ cls: "cp-palette-swatch" });
+            swatch.style.backgroundColor = hex;
+            swatch.title = name ? `${name} — ${hex}` : hex;
+
+            const label = swatch.createDiv({ cls: "cp-palette-label" });
+            label.style.color = isLightColor(hex) ? "#222" : "#fff";
+            if (name) label.createDiv({ cls: "cp-palette-name", text: name });
+            const hexEl = label.createDiv({ cls: "cp-palette-hex", text: hex });
+
+            swatch.addEventListener("click", () => {
+                void navigator.clipboard.writeText(hex).then(() => {
+                    const orig = hexEl.textContent ?? hex;
+                    hexEl.textContent = "Copied!";
+                    setTimeout(() => { hexEl.textContent = orig; }, 1200);
+                }).catch(() => {});
+            });
+        }
+    }
+
+    // ── Inline hex dot preview ────────────────────────────────────────────────
+
+    addInlineHexPreviews(el: HTMLElement) {
+        if (el.closest(".cp-container, .cp-palette")) return;
+
+        el.querySelectorAll("code").forEach((code) => {
+            if (code.closest(".cp-container, .cp-palette")) return;
+            const text = (code.textContent ?? "").trim();
+            if (!/^#?[0-9a-fA-F]{6}$/i.test(text)) return;
+            const hex = text.startsWith("#") ? text : `#${text}`;
+            const dot = createEl("span", { cls: "cp-inline-dot" });
+            dot.style.backgroundColor = hex;
+            code.insertBefore(dot, code.firstChild);
+        });
+
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+                const p = node.parentElement;
+                if (!p) return NodeFilter.FILTER_REJECT;
+                if (p.closest("code, pre, .cp-container, .cp-palette")) return NodeFilter.FILTER_REJECT;
+                return /#[0-9a-fA-F]{6}/i.test(node.textContent ?? "")
+                    ? NodeFilter.FILTER_ACCEPT
+                    : NodeFilter.FILTER_SKIP;
+            },
+        });
+
+        const textNodes: Text[] = [];
+        let n: Node | null;
+        while ((n = walker.nextNode())) textNodes.push(n as Text);
+
+        for (const textNode of textNodes) {
+            const text = textNode.textContent ?? "";
+            const re = /#([0-9a-fA-F]{6})\b/gi;
+            if (!re.test(text)) continue;
+            re.lastIndex = 0;
+
+            const frag = document.createDocumentFragment();
+            let last = 0;
+            let m: RegExpExecArray | null;
+            while ((m = re.exec(text)) !== null) {
+                if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+                const wrap = createEl("span", { cls: "cp-inline-hex" });
+                const dot  = createEl("span", { cls: "cp-inline-dot" });
+                dot.style.backgroundColor = m[0];
+                wrap.appendChild(dot);
+                wrap.appendChild(document.createTextNode(m[0]));
+                frag.appendChild(wrap);
+                last = m.index + m[0].length;
+            }
+            if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+            textNode.parentNode?.replaceChild(frag, textNode);
+        }
+    }
+
+    // ── Insertion methods ─────────────────────────────────────────────────────
+
+    insertColorWithPicker(editor: Editor) {
+        if (Platform.isMobile) {
+            this.openQuickHexModal(editor);
+            return;
+        }
+
+        const input = document.createElement("input");
+        input.type = "color";
+        input.value = "#000000";
+        input.addClass("cp-hidden-picker");
+        document.body.appendChild(input);
+
+        let done = false;
+        const insert = () => {
+            if (done) return;
+            done = true;
+            editor.replaceSelection(buildColorBlock(input.value.toUpperCase()));
+            cleanup();
+        };
+        const cleanup = () => {
+            input.removeEventListener("change", insert);
+            if (document.body.contains(input)) document.body.removeChild(input);
+        };
+        input.addEventListener("change", insert);
+        input.addEventListener("blur", () => setTimeout(cleanup, 200));
+        input.click();
+    }
+
+    openQuickHexModal(editor: Editor) {
+        new QuickHexModal(this.plugin.app, (hex) => {
+            editor.replaceSelection(buildColorBlock(hex));
+        }).open();
+    }
+
+    async insertFromClipboard(editor: Editor) {
+        try {
+            const text = (await navigator.clipboard.readText()).trim();
+            if (isValidHex(text)) {
+                editor.replaceSelection(buildColorBlock(normalizeHex(text)));
+            } else {
+                new Notice("Clipboard does not contain a valid hex color.");
+            }
+        } catch {
+            new Notice("Could not read clipboard.");
+        }
+    }
+
+    insertTemplate(editor: Editor) {
+        const template = [
+            "```color",
+            "name: ",
+            "hex: #",
+            "rgb: ",
+            "cmyk: ",
+            "pms: ",
+            "```",
+        ].join("\n");
+        editor.replaceSelection(template);
+    }
+
+    convertSelectionToBlock(editor: Editor) {
+        const sel = editor.getSelection();
+        if (!sel.trim()) return;
+
+        const data: Record<string, string> = {};
+        for (const line of sel.split("\n")) {
+            const clean = line.replace(/\*\*/g, "").trim();
+            const lower = clean.toLowerCase();
+            if (lower.startsWith("html:") || lower.startsWith("hex:")) {
+                data["hex"] = clean.replace(/^html:/i, "").replace(/^hex:/i, "").replace(/`/g, "").trim();
+            } else if (lower.startsWith("rgb:")) {
+                data["rgb"] = clean.replace(/^rgb:/i, "").trim();
+            } else if (lower.startsWith("cmyk:")) {
+                data["cmyk"] = clean.replace(/^cmyk:/i, "").trim();
+            } else if (lower.startsWith("pms:")) {
+                data["pms"] = clean.replace(/^pms:/i, "").trim();
+            } else if (clean && !Object.keys(data).length && !clean.includes(":")) {
+                data["name"] = clean;
+            }
+        }
+
+        const lines = ["```color"];
+        if (data["name"])  lines.push(`name: ${data["name"]}`);
+        if (data["hex"])   lines.push(`hex: ${data["hex"]}`);
+        if (data["rgb"])   lines.push(`rgb: ${data["rgb"]}`);
+        if (data["cmyk"])  lines.push(`cmyk: ${data["cmyk"]}`);
+        if (data["pms"])   lines.push(`pms: ${data["pms"]}`);
+        lines.push("```");
+        editor.replaceSelection(lines.join("\n"));
+    }
+
+    // ── Paste detection ───────────────────────────────────────────────────────
+
+    buildPasteExtension() {
+        return EditorView.domEventHandlers({
+            paste: (evt: ClipboardEvent) => {
+                const text = evt.clipboardData?.getData("text/plain")?.trim() ?? "";
+                if (!isValidHex(text)) return false;
+
+                const editor = this.plugin.app.workspace.activeEditor?.editor;
+                if (!editor) return false;
+
+                evt.preventDefault();
+                const hex = normalizeHex(text);
+                this.showPasteNotice(hex, editor);
+                return true;
+            },
+        });
+    }
+
+    private showPasteNotice(hex: string, editor: Editor) {
+        const notice = new Notice("", 10000);
+        notice.messageEl.empty();
+        notice.messageEl.createDiv({ cls: "cp-notice-title", text: `Hex color detected: ${hex}` });
+
+        const preview = notice.messageEl.createDiv({ cls: "cp-notice-preview" });
+        preview.style.backgroundColor = hex;
+
+        const btnRow = notice.messageEl.createDiv({ cls: "cp-notice-btns" });
+
+        let dismissed = false;
+        const dismiss = (action: "block" | "text" | "none") => {
+            if (dismissed) return;
+            dismissed = true;
+            if (action === "block") editor.replaceSelection(buildColorBlock(hex));
+            if (action === "text")  editor.replaceSelection(hex);
+            notice.hide();
+        };
+
+        btnRow.createEl("button", { text: "Insert as block", cls: "cp-notice-btn cp-notice-btn-primary" })
+            .addEventListener("click", () => dismiss("block"));
+        btnRow.createEl("button", { text: "Insert as text", cls: "cp-notice-btn" })
+            .addEventListener("click", () => dismiss("text"));
+
+        setTimeout(() => dismiss("text"), 10000);
+    }
+
+    // ── Settings section (rendered into the parent settings tab) ──────────────
+
+    renderSettings(containerEl: HTMLElement) {
+        new Setting(containerEl)
+            .setHeading()
+            .setName("Color preview");
+
+        new Setting(containerEl)
+            .setName("Swatch height")
+            .setDesc("Height of the color rectangle in pixels (40–200)")
+            .addSlider((s) => s.setLimits(40, 200, 10)
+                .setValue(this.plugin.settings.colorPreview.swatchHeight)
+                .setDynamicTooltip()
+                .onChange(async (v) => {
+                    this.plugin.settings.colorPreview.swatchHeight = v;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName("Max card width")
+            .setDesc("Maximum width of the color card in pixels (180–600)")
+            .addSlider((s) => s.setLimits(180, 600, 20)
+                .setValue(this.plugin.settings.colorPreview.maxWidth)
+                .setDynamicTooltip()
+                .onChange(async (v) => {
+                    this.plugin.settings.colorPreview.maxWidth = v;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName("Show color name")
+            .setDesc("Display the name field in the preview card")
+            .addToggle((t) => t.setValue(this.plugin.settings.colorPreview.showColorName)
+                .onChange(async (v) => {
+                    this.plugin.settings.colorPreview.showColorName = v;
+                    await this.plugin.saveSettings();
+                }));
+    }
+}
+
+// ─── Slash command suggest (/color …) ────────────────────────────────────────
+
+interface SlashSuggestion {
+    label: string;
+    action: "picker" | "hex-modal" | "clipboard" | "template";
+}
+
+class ColorSlashSuggest extends EditorSuggest<SlashSuggestion> {
+    constructor(private cpModule: ColorPreviewModule, app: App) {
+        super(app);
+    }
+
+    onTrigger(cursor: EditorPosition, editor: Editor, _file: TFile): EditorSuggestTriggerInfo | null {
+        const line = editor.getLine(cursor.line);
+        const sub  = line.substring(0, cursor.ch);
+        const m    = sub.match(/(\/color.*)$/i);
+        if (!m) return null;
+        return {
+            start: { line: cursor.line, ch: sub.length - m[1].length },
+            end: cursor,
+            query: m[1].slice("/color".length).trim(),
+        };
+    }
+
+    getSuggestions(_ctx: EditorSuggestContext): SlashSuggestion[] {
+        return [
+            { label: "🎨  Color picker",    action: "picker"    },
+            { label: "⌨️   Type hex code",   action: "hex-modal" },
+            { label: "📋  From clipboard",  action: "clipboard" },
+            { label: "📝  Empty template",  action: "template"  },
+        ];
+    }
+
+    renderSuggestion(item: SlashSuggestion, el: HTMLElement) {
+        el.createDiv({ cls: "cp-suggest-item", text: item.label });
+    }
+
+    selectSuggestion(item: SlashSuggestion, _evt: MouseEvent | KeyboardEvent) {
+        const ctx = this.context;
+        if (!ctx) return;
+        ctx.editor.replaceRange("", ctx.start, ctx.end);
+        switch (item.action) {
+            case "picker":    this.cpModule.insertColorWithPicker(ctx.editor); break;
+            case "hex-modal": this.cpModule.openQuickHexModal(ctx.editor);     break;
+            case "clipboard": void this.cpModule.insertFromClipboard(ctx.editor);   break;
+            case "template":  this.cpModule.insertTemplate(ctx.editor);        break;
+        }
+    }
+}
+
+// ─── Quick hex modal ──────────────────────────────────────────────────────────
+
+class QuickHexModal extends Modal {
+    onSubmit: (hex: string) => void;
+    initialValue: string;
+
+    constructor(app: App, onSubmit: (hex: string) => void, initialValue = "") {
+        super(app);
+        this.onSubmit = onSubmit;
+        this.initialValue = initialValue;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.createEl("h3", { text: "[DEV] Enter hex color" });
+
+        const wrapper = contentEl.createDiv({ cls: "cp-modal-wrapper" });
+        const preview = wrapper.createDiv({ cls: "cp-modal-preview" });
+        const startColor = isValidHex(this.initialValue) ? normalizeHex(this.initialValue) : "#000000";
+        preview.style.backgroundColor = startColor;
+
+        const input = wrapper.createEl("input", {
+            cls: "cp-modal-input",
+            attr: { type: "text", placeholder: "#000000", spellcheck: "false", value: startColor },
+        });
+
+        input.addEventListener("input", () => {
+            if (isValidHex(input.value.trim())) {
+                preview.style.backgroundColor = normalizeHex(input.value.trim());
+                preview.removeClass("cp-preview-dim");
+            } else {
+                preview.addClass("cp-preview-dim");
+            }
+        });
+
+        input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                if (isValidHex(input.value.trim())) {
+                    this.onSubmit(normalizeHex(input.value.trim()));
+                    this.close();
+                } else {
+                    input.addClass("cp-modal-error");
+                    setTimeout(() => input.removeClass("cp-modal-error"), 600);
+                }
+            }
+            if (e.key === "Escape") this.close();
+        });
+
+        contentEl.createEl("button", { text: "Insert", cls: "cp-modal-btn mod-cta" })
+            .addEventListener("click", () => {
+                if (isValidHex(input.value.trim())) {
+                    this.onSubmit(normalizeHex(input.value.trim()));
+                    this.close();
+                }
+            });
+
+        setTimeout(() => input.focus(), 50);
+    }
+
+    onClose() { this.contentEl.empty(); }
+}
+
+// ─── Module loader ────────────────────────────────────────────────────────────
+
+export function loadColorPreview(plugin: DevPlugin): ColorPreviewModule {
+    const mod = new ColorPreviewModule(plugin);
+
+    plugin.registerMarkdownCodeBlockProcessor("color", (source, el, ctx) => {
+        mod.renderColorBlock(source, el, ctx);
+    });
+
+    plugin.registerMarkdownCodeBlockProcessor("palette", (source, el, _ctx) => {
+        mod.renderPaletteBlock(source, el);
+    });
+
+    plugin.registerMarkdownPostProcessor((el) => {
+        mod.addInlineHexPreviews(el);
+    });
+
+    plugin.addCommand({
+        id: "dev-cp-insert-color-picker",
+        name: "[DEV] Color preview: Insert color (color picker)",
+        editorCallback: (editor) => mod.insertColorWithPicker(editor),
+    });
+
+    plugin.addCommand({
+        id: "dev-cp-insert-color-hex",
+        name: "[DEV] Color preview: Insert color (type hex)",
+        editorCallback: (editor) => mod.openQuickHexModal(editor),
+    });
+
+    plugin.addCommand({
+        id: "dev-cp-insert-color-clipboard",
+        name: "[DEV] Color preview: Insert color from clipboard",
+        editorCallback: (editor) => void mod.insertFromClipboard(editor),
+    });
+
+    plugin.addCommand({
+        id: "dev-cp-insert-color-template",
+        name: "[DEV] Color preview: Insert empty color block",
+        editorCallback: (editor) => mod.insertTemplate(editor),
+    });
+
+    plugin.addCommand({
+        id: "dev-cp-convert-to-color-block",
+        name: "[DEV] Color preview: Convert selection to color block",
+        editorCallback: (editor) => mod.convertSelectionToBlock(editor),
+    });
+
+    plugin.addRibbonIcon("palette", "[DEV] Insert color", () => {
+        const editor = plugin.app.workspace.activeEditor?.editor;
+        if (editor) mod.insertColorWithPicker(editor);
+        else new Notice("[DEV] Open a note first.");
+    });
+
+    plugin.registerEditorSuggest(new ColorSlashSuggest(mod, plugin.app));
+    plugin.registerEditorExtension(buildInlineDotExtension());
+    plugin.registerEditorExtension(mod.buildPasteExtension());
+
+    return mod;
+}

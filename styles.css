@@ -1,0 +1,714 @@
+/* ═══════════════════════════════════════════════════
+   Dev Suite [DEV] — styles.css
+   Merged from: Color Preview + dev-suite shell
+═══════════════════════════════════════════════════ */
+
+/* ──────────────────────────────────────────────────
+   DESIGN TOKENS
+────────────────────────────────────────────────── */
+
+:root {
+    --dev-radius-sm:  6px;
+    --dev-radius-md:  10px;
+    --dev-radius-lg:  14px;
+    --dev-space-xs:   4px;
+    --dev-space-sm:   8px;
+    --dev-space-md:   16px;
+    --dev-space-lg:   24px;
+    --dev-transition: 0.15s ease;
+    /* Overridden per-client via inline style on the modal element */
+    --dev-client-color: var(--interactive-accent);
+}
+
+/* ──────────────────────────────────────────────────
+   CLIENT BADGE
+────────────────────────────────────────────────── */
+
+.dev-client-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.78em;
+    font-weight: 600;
+    background: var(--dev-client-color);
+    color: var(--text-on-accent);
+    white-space: nowrap;
+    user-select: none;
+    cursor: default;
+}
+
+.dev-client-badge.is-private {
+    background: var(--background-modifier-border);
+    color: var(--text-muted);
+}
+
+.dev-client-badge__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+/* ──────────────────────────────────────────────────
+   DEV MODAL LAYOUT
+────────────────────────────────────────────────── */
+
+.dev-modal .modal-title {
+    display: none;
+}
+
+.dev-modal .modal-content {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.dev-modal-header {
+    display: flex;
+    align-items: center;
+    gap: var(--dev-space-sm);
+    padding: var(--dev-space-md) var(--dev-space-md) var(--dev-space-sm);
+    border-bottom: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+}
+
+.dev-modal-header-icon {
+    display: flex;
+    align-items: center;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.dev-modal-header-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.dev-modal-title {
+    flex: 1;
+    font-size: 1em;
+    font-weight: 600;
+    color: var(--text-normal);
+    margin: 0;
+}
+
+/* Client banner — shown when a non-Private client is active */
+
+.dev-modal-client-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--dev-space-xs) var(--dev-space-md);
+    background: color-mix(in srgb, var(--dev-client-color) 15%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--dev-client-color) 30%, transparent);
+    font-size: 0.82em;
+    gap: var(--dev-space-sm);
+    flex-shrink: 0;
+}
+
+.dev-modal-client-banner.is-hidden {
+    display: none;
+}
+
+.dev-modal-client-banner__label {
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.dev-modal-client-banner__switch {
+    font-size: 0.82em;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--background-modifier-border);
+    background: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.dev-modal-client-banner__switch:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.dev-modal-body {
+    padding: var(--dev-space-md);
+    flex: 1;
+    overflow-y: auto;
+}
+
+.dev-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--dev-space-sm);
+    padding: var(--dev-space-sm) var(--dev-space-md) var(--dev-space-md);
+    border-top: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+}
+
+/* ──────────────────────────────────────────────────
+   STEP INDICATOR
+────────────────────────────────────────────────── */
+
+.dev-step-indicator {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: var(--dev-space-xs) var(--dev-space-md);
+    border-bottom: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+}
+
+.dev-step-indicator__step {
+    width: 24px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--background-modifier-border);
+    transition: background var(--dev-transition);
+}
+
+.dev-step-indicator__step.is-active {
+    background: var(--interactive-accent);
+}
+
+.dev-step-indicator__step.is-done {
+    background: color-mix(in srgb, var(--interactive-accent) 50%, transparent);
+}
+
+/* ──────────────────────────────────────────────────
+   COLOR PREVIEW MODULE
+   (copied from obsidian-color-preview/styles.css)
+────────────────────────────────────────────────── */
+
+/* ── Color card ─────────────────────────────────── */
+
+.cp-container {
+    display: inline-flex;
+    flex-direction: column;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--background-modifier-border);
+    margin: 6px 0;
+    min-width: 200px;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* ── Swatch ─────────────────────────────────────── */
+
+.cp-swatch {
+    width: 100%;
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 8px 10px;
+    box-sizing: border-box;
+    cursor: pointer;
+    transition: filter 0.15s ease;
+}
+
+.cp-swatch:hover {
+    filter: brightness(0.92);
+}
+
+.cp-swatch-empty {
+    background: repeating-linear-gradient(
+        45deg,
+        #ccc 0px, #ccc 4px,
+        #eee 4px, #eee 12px
+    );
+    cursor: default;
+}
+
+.cp-swatch-hex {
+    font-family: var(--font-monospace);
+    font-size: 0.72em;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    opacity: 0.85;
+    user-select: text;
+}
+
+.cp-edit-icon {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    display: flex;
+    align-items: center;
+    padding-bottom: 1px;
+}
+
+.cp-swatch:hover .cp-edit-icon {
+    opacity: 0.75;
+}
+
+/* ── Info section ───────────────────────────────── */
+
+.cp-info {
+    padding: 10px 14px 12px;
+    background: var(--background-secondary);
+}
+
+.cp-name {
+    font-weight: 700;
+    font-size: 0.88em;
+    color: var(--text-normal);
+    margin-bottom: 6px;
+    line-height: 1.3;
+}
+
+.cp-row {
+    font-size: 0.82em;
+    line-height: 1.9;
+    white-space: nowrap;
+}
+
+.cp-label {
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.cp-value {
+    color: var(--text-muted);
+    border-radius: 3px;
+    padding: 0 2px;
+    transition: background 0.1s;
+}
+
+.cp-mono {
+    font-family: var(--font-monospace);
+    font-size: 0.95em;
+}
+
+/* Calculated (approximate) values */
+.cp-calculated {
+    font-style: italic;
+    opacity: 0.7;
+}
+
+.cp-approx {
+    font-size: 0.75em;
+    color: var(--text-faint);
+    margin-left: 2px;
+}
+
+.cp-calc-note {
+    font-size: 0.72em;
+    font-style: italic;
+    color: var(--text-faint);
+    margin-top: 5px;
+}
+
+/* Copyable values */
+.cp-copyable {
+    cursor: pointer;
+}
+
+.cp-copyable:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.cp-copied {
+    color: var(--color-green) !important;
+    background: transparent !important;
+}
+
+/* ── Palette block ──────────────────────────────── */
+
+.cp-palette {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--background-modifier-border);
+    margin: 6px 0;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+}
+
+.cp-palette-swatch {
+    flex: 1 1 80px;
+    min-height: 90px;
+    display: flex;
+    align-items: flex-end;
+    padding: 7px 8px;
+    box-sizing: border-box;
+    cursor: pointer;
+    transition: filter 0.15s ease;
+    position: relative;
+}
+
+.cp-palette-swatch:hover {
+    filter: brightness(0.9);
+    z-index: 1;
+}
+
+.cp-palette-label {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.cp-palette-name {
+    font-size: 0.72em;
+    font-weight: 600;
+    line-height: 1.2;
+    opacity: 0.9;
+}
+
+.cp-palette-hex {
+    font-family: var(--font-monospace);
+    font-size: 0.68em;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    opacity: 0.8;
+}
+
+/* ── Inline hex dot ─────────────────────────────── */
+
+.cp-inline-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 3px;
+    vertical-align: middle;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    flex-shrink: 0;
+    position: relative;
+    top: -1px;
+}
+
+.cp-inline-hex {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+}
+
+/* ── Hidden color picker input ──────────────────── */
+
+.cp-hidden-picker {
+    position: fixed;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* ── Quick hex modal ────────────────────────────── */
+
+.cp-modal-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 12px 0;
+}
+
+.cp-modal-preview {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    border: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+    transition: background-color 0.15s ease;
+}
+
+.cp-preview-dim {
+    opacity: 0.25;
+}
+
+.cp-modal-input {
+    flex: 1;
+    font-family: var(--font-monospace);
+    font-size: 1.1em;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.cp-modal-input:focus {
+    border-color: var(--interactive-accent);
+}
+
+.cp-modal-error {
+    border-color: var(--color-red) !important;
+    animation: cp-shake 0.3s ease;
+}
+
+@keyframes cp-shake {
+    0%, 100% { transform: translateX(0); }
+    25%       { transform: translateX(-5px); }
+    75%       { transform: translateX(5px); }
+}
+
+.cp-modal-btn {
+    margin-top: 4px;
+    width: 100%;
+}
+
+/* ── Paste notice ───────────────────────────────── */
+
+.cp-notice-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 0.9em;
+}
+
+.cp-notice-preview {
+    width: 100%;
+    height: 32px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+.cp-notice-btns {
+    display: flex;
+    gap: 8px;
+}
+
+.cp-notice-btn {
+    flex: 1;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 0.82em;
+    cursor: pointer;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    transition: background 0.12s;
+}
+
+.cp-notice-btn:hover {
+    background: var(--background-modifier-hover);
+}
+
+.cp-notice-btn-primary {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: transparent;
+}
+
+.cp-notice-btn-primary:hover {
+    filter: brightness(1.1);
+    background: var(--interactive-accent);
+}
+
+/* ── Slash suggest dropdown ─────────────────────── */
+
+.cp-suggest-item {
+    padding: 2px 0;
+    font-size: 0.9em;
+}
+
+/* ──────────────────────────────────────────────────
+   DEV SUITE SHELL
+   Styles for the overall dev-suite plugin UI
+────────────────────────────────────────────────── */
+
+/* ── [DEV] badge on ribbon icon tooltip ─────────── */
+/* No extra CSS needed — "[DEV]" is in the icon title text */
+
+/* ── Module toggle section in settings ──────────── */
+/* Uses standard Obsidian Setting components — no custom styles needed */
+
+/* ──────────────────────────────────────────────────
+   NOTE CREATOR MODULE
+────────────────────────────────────────────────── */
+
+.dev-nc-modal {
+    width: 520px;
+}
+
+.dev-nc-type-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin: 16px 0;
+}
+
+.dev-nc-type-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 16px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--background-modifier-border);
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+}
+
+.dev-nc-type-card:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--color-accent);
+}
+
+.dev-nc-type-card.is-selected {
+    background: var(--interactive-accent);
+    border-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.dev-nc-type-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.dev-nc-type-icon svg {
+    width: 22px;
+    height: 22px;
+}
+
+.dev-nc-type-label {
+    font-size: 0.82em;
+    text-align: center;
+    line-height: 1.2;
+}
+
+.dev-nc-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+    padding-top: 12px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Apply template description text */
+
+.dev-nc-apply-desc {
+    margin: 0 0 var(--dev-space-sm);
+    font-size: 0.88em;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+/* Client mismatch warning — shown in step 3 when client field ≠ active space */
+
+.dev-nc-client-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--dev-space-sm);
+    padding: var(--dev-space-sm) var(--dev-space-md);
+    margin-top: var(--dev-space-sm);
+    border-radius: var(--dev-radius-sm);
+    background: color-mix(in srgb, var(--color-orange) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-orange) 30%, transparent);
+}
+
+.dev-nc-warning-icon {
+    display: flex;
+    align-items: center;
+    color: var(--color-orange);
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.dev-nc-warning-icon svg {
+    width: 15px;
+    height: 15px;
+}
+
+.dev-nc-warning-text {
+    font-size: 0.85em;
+    color: var(--text-normal);
+    line-height: 1.4;
+}
+
+/* Intercept notice — shown after Obsidian creates a default new note */
+
+.dev-nc-intercept-notice {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dev-nc-intercept-text {
+    font-size: 0.9em;
+    line-height: 1.3;
+}
+
+.dev-nc-intercept-btn {
+    align-self: flex-start;
+    padding: 4px 12px;
+    border-radius: 4px;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border: none;
+    cursor: pointer;
+    font-size: 0.85em;
+    transition: filter var(--dev-transition);
+}
+
+.dev-nc-intercept-btn:hover {
+    filter: brightness(1.12);
+}
+
+/* ──────────────────────────────────────────────────
+   CLIENT CONTEXT MODULE
+────────────────────────────────────────────────── */
+
+/* Status bar item */
+
+.dev-cc-status {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    font-size: var(--font-ui-smaller);
+}
+
+.dev-cc-status:hover .dev-cc-label {
+    color: var(--text-accent);
+}
+
+/* Colored dot — used in status bar and suggest list */
+
+.dev-cc-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--interactive-accent);
+    flex-shrink: 0;
+    transition: background var(--dev-transition);
+}
+
+.dev-cc-dot.is-private {
+    background: var(--text-faint);
+}
+
+.dev-cc-label {
+    color: var(--text-muted);
+    transition: color var(--dev-transition);
+}
+
+/* Ribbon icon — highlighted when a client is active */
+
+.dev-cc-ribbon {
+    transition: color var(--dev-transition);
+}
+
+.dev-cc-ribbon-active {
+    color: var(--interactive-accent) !important;
+}
+
+/* Suggest row — shown in ClientSwitcherModal */
+
+.dev-cc-suggest-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+}
+
+.dev-cc-suggest-label {
+    flex: 1;
+}

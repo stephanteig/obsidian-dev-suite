@@ -1,0 +1,15 @@
+# Compiled output
+main.js
+*.js.map
+
+# Dependencies
+node_modules/
+
+# macOS
+.DS_Store
+
+# Backup files
+*.bak
+
+# esbuild cache
+.esbuild/

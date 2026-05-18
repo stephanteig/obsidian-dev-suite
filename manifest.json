@@ -1,0 +1,10 @@
+{
+    "id": "dev-suite",
+    "name": "Dev Suite [DEV]",
+    "version": "0.1.0",
+    "minAppVersion": "1.0.0",
+    "description": "Dev sandbox: Client Context, Research Dashboard, Palette Extractor, Note Creator, Color Preview. All commands prefixed [DEV].",
+    "author": "Stephan Teig",
+    "authorUrl": "https://github.com/stephanteig",
+    "isDesktopOnly": false
+}
