@@ -16,6 +16,18 @@ from production plugins.
 
 **Repo:** `obsidian-dev-suite/` (local dev only — not published to Obsidian community)
 
+### Production split (completed 2026-05-18)
+
+The two production clusters have been split out into standalone plugins:
+
+| Plugin | Repo | Modules | Status |
+|---|---|---|---|
+| **Color Preview** | `stephanteig/obsidian-color-preview` | Color Preview + Palette Extractor | v1.1.0 released |
+| **Brief** | `stephanteig/obsidian-brief` | Client Context + Note Creator + Panel | v1.0.0 released |
+
+Dev Suite continues as the sandbox — all `[DEV]`-marked modules remain here for testing.
+When new features are ready for production, port them to the relevant standalone plugin.
+
 ---
 
 ## Tech Stack
@@ -373,19 +385,21 @@ Changes take effect after reloading the plugin (Cmd+R in Obsidian).
 
 - **Settings tab** — `clientColors` is stored but there is no settings UI for viewing/resetting all client colors at once. Consider adding a "Manage client colors" section.
 - **`color-mix()` fallback** — used in `dev-modal-client-banner` and `dev-nc-client-warning`. Supported in Electron 22+ (Obsidian 1.1+). If issues arise on older builds, replace with hardcoded `rgba()`.
-- **Production split** — when a module is stable enough to ship standalone, see "Splitting Modules" section below.
+- **Production split** — completed. Color Preview v1.1.0 and Brief v1.0.0 are now live. Future features should be prototyped here first, then ported.
 
 ---
 
-## Splitting Modules into Individual Plugins (future)
+## Splitting Modules into Individual Plugins
 
-When a module is ready to ship as its own plugin:
+**Done:** Color Preview v1.1.0 (`stephanteig/obsidian-color-preview`) and Brief v1.0.0 (`stephanteig/obsidian-brief`) are the two production plugins split from dev-suite.
+
+When a future module is ready to ship as its own plugin:
 1. Copy the module folder to its own repo
 2. Copy `modules/shared/dev-modal.ts` and `modules/shared/client-switcher.ts` if needed
 3. Create a standalone `manifest.json` and `main.ts`
 4. Remove all `[DEV]` prefixes from command names and UI labels
 5. Remove DEV visual markers
-6. Run the full pre-release checklist twice
+6. Run the full pre-release checklist twice (ESLint zero errors, build clean, visual test)
 7. Publish to Obsidian community plugin registry
 
 The dev plugin is never "finished" — it always exists for testing new features.
